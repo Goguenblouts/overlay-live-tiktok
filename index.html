@@ -1,0 +1,864 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Central de Overlays - Live TikTok</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0e0e10;
+    --bg-alt: #16161a;
+    --surface: #1a1a1e;
+    --surface-hover: #212126;
+    --border: #2a2a30;
+    --accent: #F0464B;
+    --accent-dim: #8a2c30;
+    --text: #f3f4f2;
+    --text-dim: #93939a;
+    --text-faint: #56565e;
+    --grad-start: #D61F93;
+    --grad-end: #7C22C8;
+    --ic-links: #F0464B;
+    --ic-previa: #2F9BD6;
+    --ic-aparencia: #9B5DE5;
+    --ic-config: #28C48A;
+    --font-display: 'Space Grotesk', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); }
+  ::selection { background: var(--accent); color: #ffffff; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+  a { color: var(--accent); }
+  input:focus-visible, select:focus-visible, button:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  button { font-family: var(--font-display); transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease; }
+  button:hover { transform: translateY(-1px); }
+  button:active { transform: translateY(0); }
+  input[type="text"], input[type="number"], select {
+    font-family: var(--font-mono);
+  }
+  .painel-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .signal-bar {
+    height: 2px;
+    width: 100%;
+    background: linear-gradient(90deg, transparent, var(--accent-dim), var(--accent), var(--accent-dim), transparent);
+    background-size: 200% 100%;
+    animation: signal-sweep 3.5s ease-in-out infinite;
+    border-radius: 2px;
+  }
+  @keyframes signal-sweep {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .signal-bar { animation: none; background-position: 0 0; }
+    button:hover { transform: none; }
+  }
+  .signal-bar { display: none; }
+  .topbar {
+    height: 48px;
+    background: linear-gradient(90deg, var(--grad-start), var(--grad-end));
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 18px;
+    flex-shrink: 0;
+  }
+  .topbar-logo {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: rgba(255,255,255,0.22);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; color: #fff;
+  }
+  .topbar-title { color: #fff; font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+  .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
+  .painel-layout { display: flex; flex: 1; min-height: 0; }
+  .painel-sidebar {
+    width: 76px;
+    flex-shrink: 0;
+    background: var(--bg-alt);
+    border-right: 1px solid var(--border);
+    padding: 14px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .painel-main { flex: 1; min-width: 0; padding: 30px 36px 72px; max-width: 780px; }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 9px;
+    padding: 9px 4px;
+    cursor: pointer;
+    font-family: var(--font-display);
+  }
+  .nav-item:hover { background: var(--surface-hover); transform: none; }
+  .nav-item.ativo { background: var(--surface); }
+  .nav-icon {
+    width: 30px; height: 30px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 14px; font-weight: 700;
+    opacity: 0.55;
+  }
+  .nav-item.ativo .nav-icon { opacity: 1; }
+  .nav-label { font-size: 9.5px; color: var(--text-faint); text-align: center; line-height: 1.2; }
+  .nav-item.ativo .nav-label { color: var(--text); }
+  .oculto { display: none !important; }
+  @media (max-width: 720px) {
+    .painel-layout { flex-direction: column; }
+    .painel-sidebar {
+      width: 100%;
+      flex-direction: row;
+      overflow-x: auto;
+      padding: 10px;
+    }
+    .nav-item { width: auto; flex-shrink: 0; padding: 6px 10px; }
+    .painel-main { padding: 24px 18px 56px; }
+  }
+</style>
+</head>
+<body>
+<script>
+/* ============================================================
+   CENTRAL DE OVERLAYS
+   - sem parâmetro na URL: mostra o painel (lista + config + tema)
+   - ?view=metas : overlay das metas (pra Browser Source)
+   - ?view=ranking : overlay do ranking (pra Browser Source)
+   - acrescente &sim=1 no link do overlay pra testar sem live e
+   sem o TikFinity ligado (gera eventos falsos automaticamente).
+   Pra criar um overlay novo no futuro: adiciona um item em
+   OVERLAYS e uma função render<Nome>() seguindo o padrão
+   das duas que já existem. Toda a parte visual usa cfg.tema,
+   então overlays novos herdam a mesma personalização de graça.
+   ============================================================ */
+
+const OVERLAYS = [
+  { id: "metas",   nome: "Metas da live" },
+  { id: "ranking", nome: "Ranking de seguidores" },
+];
+
+const PRESETS_TEMA = {
+  "Verde neon":       { corPrimaria: "#1D9E75", corFundo: "#0d1512", corCard: "#152420", corBorda: "#1f3a32", corTexto: "#ffffff", corTextoSec: "#8fb3a8", raio: 12, fonte: "padrao" },
+  "Roxo gamer":        { corPrimaria: "#7F77DD", corFundo: "#120f1f", corCard: "#1c1830", corBorda: "#332c52", corTexto: "#ffffff", corTextoSec: "#b3aee0", raio: 14, fonte: "montserrat" },
+  "Rosa vibrante":     { corPrimaria: "#D4537E", corFundo: "#1a0f14", corCard: "#2a1620", corBorda: "#4a2534", corTexto: "#ffffff", corTextoSec: "#e0a8bc", raio: 16, fonte: "poppins" },
+  "Escuro minimalista": { corPrimaria: "#f5f5f0", corFundo: "#0a0a0a", corCard: "#161616", corBorda: "#2a2a2a", corTexto: "#ffffff", corTextoSec: "#8a8a85", raio: 6, fonte: "bebas" },
+};
+
+const FONTES = {
+  padrao:     { nome: "Padrão", css: "Arial, sans-serif", googleFamily: null },
+  poppins:    { nome: "Poppins", css: "'Poppins', sans-serif", googleFamily: "Poppins:wght@400;600;700" },
+  montserrat: { nome: "Montserrat", css: "'Montserrat', sans-serif", googleFamily: "Montserrat:wght@400;600;700" },
+  bebas:      { nome: "Bebas Neue (números grandes)", css: "'Bebas Neue', sans-serif", googleFamily: "Bebas+Neue" },
+};
+
+const CONFIG_PADRAO = {
+  tikfinityWsUrl: "ws://127.0.0.1:21213/",
+  valores: {
+    mensagem: 1,
+    likeACada: 10,
+    likeValor: 1,
+    presente: 1,
+    seguidor: 3,
+    compartilhamento: 5,
+  },
+  exigirSeguidor: true,
+  tamanhoRanking: 5,
+  tiers: [
+    { id: "baixo",  nome: "Jam track",       pontos: 315,  escopo: "live",   fontes: ["mensagem", "like", "compartilhamento"] },
+    { id: "medio1", nome: "Emote",            pontos: 785,  escopo: "live",   fontes: ["presente"] },
+    { id: "medio2", nome: "Battle pass",       pontos: 1375, escopo: "mensal", fontes: ["presente"] },
+    { id: "epico",  nome: "Bundle de skin",    pontos: 3410, escopo: "mensal", fontes: ["presente"] },
+  ],
+  tema: {
+    corPrimaria: "#1D9E75",
+    corFundo: "#15171a",
+    corCard: "#202226",
+    corBorda: "#3a3c40",
+    corTexto: "#ffffff",
+    corTextoSec: "#9a9a95",
+    raio: 12,
+    fonte: "padrao",
+  },
+};
+
+function carregarConfig() {
+  try {
+    const salvo = JSON.parse(localStorage.getItem("configGeral"));
+    if (!salvo) return structuredClone(CONFIG_PADRAO);
+    const cfg = Object.assign(structuredClone(CONFIG_PADRAO), salvo);
+    cfg.tema = Object.assign(structuredClone(CONFIG_PADRAO.tema), salvo.tema || {});
+    cfg.valores = Object.assign(structuredClone(CONFIG_PADRAO.valores), salvo.valores || {});
+    return cfg;
+  } catch (e) {
+    return structuredClone(CONFIG_PADRAO);
+  }
+}
+function salvarConfig(cfg) {
+  localStorage.setItem("configGeral", JSON.stringify(cfg));
+}
+
+function carregarFonteGoogle(fonteKey) {
+  const f = FONTES[fonteKey] || FONTES.padrao;
+  if (f.googleFamily) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = "https://fonts.googleapis.com/css2?family=" + f.googleFamily + "&display=swap";
+    document.head.appendChild(link);
+  }
+  return f.css;
+}
+
+const LEGENDA_FONTES = { mensagem: "chat", like: "likes", presente: "presente", seguidor: "seguidor", compartilhamento: "compartilhar" };
+
+// gera o HTML da grade de tiers (usado no overlay real E na prévia do painel)
+function gerarHtmlTiers(tema, tiers, pontosMap) {
+  const raioCard = Math.max(4, tema.raio - 4);
+  return `<div style="display:grid;grid-template-columns:repeat(${tiers.length},1fr);gap:8px;">` +
+    tiers.map(tier => {
+      const atual = pontosMap[tier.id] || 0;
+      const batido = atual >= tier.pontos;
+      const pct = Math.min(100, (atual / tier.pontos) * 100);
+      const fonteTxt = tier.fontes.map(f => LEGENDA_FONTES[f] || f).join(" + ");
+      const fundoCard = batido ? tema.corPrimaria : tema.corCard;
+      const corTitulo = batido ? tema.corFundo : tema.corTexto;
+      const corSub = batido ? tema.corFundo : tema.corTextoSec;
+      const bordaCard = batido ? "none" : `1px solid ${tema.corBorda}`;
+      return `
+        <div style="border-radius:${raioCard}px;padding:10px 12px;background:${fundoCard};border:${bordaCard};">
+          <div style="font-size:13px;color:${corTitulo};font-weight:bold;">${tier.nome}</div>
+          <div style="font-size:11px;color:${corSub};margin:2px 0 6px;">via ${fonteTxt}</div>
+          <div style="height:5px;background:rgba(255,255,255,0.15);border-radius:4px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${batido ? tema.corFundo : tema.corPrimaria};"></div>
+          </div>
+          <div style="font-size:11px;color:${corSub};margin-top:4px;">${atual}/${tier.pontos} pts${batido ? " · batido" : ""}</div>
+        </div>
+      `;
+    }).join("") + `</div>`;
+}
+
+// gera o HTML do ranking (usado no overlay real E na prévia do painel)
+function gerarHtmlRanking(tema, lista) {
+  if (lista.length === 0) {
+    return `<div style="font-size:13px;color:${tema.corTextoSec};">aguardando pontos...</div>`;
+  }
+  return lista.map((u, i) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;${i < lista.length - 1 ? `border-bottom:1px solid ${tema.corBorda};` : ''}">
+      <span style="font-size:14px;color:${tema.corTexto};">${i + 1}. ${u.nickname}</span>
+      <span style="font-size:13px;color:${tema.corPrimaria};font-weight:bold;">${u.pontos} pts</span>
+    </div>
+  `).join("");
+}
+
+document.body.style.margin = "0";
+document.body.style.background = "transparent";
+document.body.style.fontFamily = "Arial, sans-serif";
+document.body.style.color = "#fff";
+
+const params = new URLSearchParams(location.search);
+const view = params.get("view");
+
+if (!view) {
+  renderPainel();
+} else if (view === "metas") {
+  renderMetas();
+} else if (view === "ranking") {
+  renderRanking();
+} else {
+  document.body.innerHTML = "<div style='padding:20px;'>overlay desconhecido: " + view + "</div>";
+}
+
+/* ============================================================
+   PAINEL — lista de overlays + configurações + tema
+   ============================================================ */
+function renderPainel() {
+  document.body.style.background = "var(--bg)";
+  document.body.style.minHeight = "100vh";
+  document.body.style.fontFamily = "var(--font-display)";
+  document.body.style.color = "var(--text)";
+
+  const cfg = carregarConfig();
+
+  const SECOES = [
+    { id: "links",      label: "Links",       icone: "🔗", cor: "var(--ic-links)" },
+    { id: "previa",     label: "Prévia",       icone: "▣", cor: "var(--ic-previa)" },
+    { id: "aparencia",  label: "Aparência",    icone: "◐", cor: "var(--ic-aparencia)" },
+    { id: "config",     label: "Config",       icone: "⚙", cor: "var(--ic-config)" },
+  ];
+
+  const shell = document.createElement("div");
+  shell.className = "app-shell";
+  document.body.appendChild(shell);
+
+  // -------- topbar --------
+  shell.innerHTML = `
+    <div class="topbar">
+      <div class="topbar-logo">TS</div>
+      <div class="topbar-title">TTK Studio</div>
+    </div>
+  `;
+
+  const layout = document.createElement("div");
+  layout.className = "painel-layout";
+  shell.appendChild(layout);
+
+  // -------- sidebar (trilha de ícones) --------
+  const sidebar = document.createElement("div");
+  sidebar.className = "painel-sidebar";
+  layout.appendChild(sidebar);
+
+  SECOES.forEach((s, i) => {
+    const btn = document.createElement("button");
+    btn.className = "nav-item" + (i === 0 ? " ativo" : "");
+    btn.dataset.secao = s.id;
+    btn.innerHTML = `<span class="nav-icon" style="background:${s.cor};">${s.icone}</span><span class="nav-label">${s.label}</span>`;
+    sidebar.appendChild(btn);
+  });
+  const nav = sidebar;
+
+  // -------- área principal --------
+  const wrap = document.createElement("div");
+  wrap.className = "painel-main";
+  layout.appendChild(wrap);
+
+  wrap.innerHTML = `
+    <div style="padding-bottom:22px;">
+      <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em;">Overlays da live</h1>
+      <p style="font-size:14px;color:var(--text-dim);margin:0 0 4px;max-width:520px;line-height:1.5;">Copie o link de cada overlay pro TikTok Studio ou OBS, ajuste a aparência e as regras de pontuação — tudo fica salvo neste navegador.</p>
+    </div>
+  `;
+
+  function criarSecao(id) {
+    const sec = document.createElement("div");
+    sec.className = "secao-conteudo" + (id === "links" ? "" : " oculto");
+    sec.id = "secao-" + id;
+    wrap.appendChild(sec);
+    return sec;
+  }
+
+  nav.querySelectorAll(".nav-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      nav.querySelectorAll(".nav-item").forEach(b => b.classList.remove("ativo"));
+      btn.classList.add("ativo");
+      SECOES.forEach(s => document.getElementById("secao-" + s.id).classList.add("oculto"));
+      document.getElementById("secao-" + btn.dataset.secao).classList.remove("oculto");
+    });
+  });
+
+  // ============================================================
+  // SEÇÃO: Links dos overlays
+  // ============================================================
+  const secaoLinks = criarSecao("links");
+  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity.</p>`;
+
+  const listaWrap = document.createElement("div");
+  listaWrap.style.cssText = "display:flex;flex-direction:column;gap:10px;";
+  secaoLinks.appendChild(listaWrap);
+
+  OVERLAYS.forEach(ov => {
+    const link = location.origin + location.pathname + "?view=" + ov.id;
+    const linkTeste = link + "&sim=1";
+    const card = document.createElement("div");
+    card.className = "painel-card";
+    card.style.cssText = "padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:3px solid var(--ic-links);";
+    card.innerHTML = `
+      <div style="min-width:0;">
+        <div style="font-size:14px;font-weight:600;margin-bottom:4px;">${ov.nome}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${link}</div>
+      </div>
+      <div style="flex-shrink:0;display:flex;gap:8px;">
+        <button data-link="${linkTeste}" title="Gera eventos falsos automaticamente — não precisa de live nem do TikFinity ligado" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Copiar link de teste</button>
+        <button data-link="${link}" style="background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Copiar link</button>
+      </div>
+    `;
+    listaWrap.appendChild(card);
+  });
+  listaWrap.querySelectorAll("button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      copiarTexto(btn.dataset.link);
+      const original = btn.textContent;
+      btn.textContent = "Copiado";
+      setTimeout(() => (btn.textContent = original), 1500);
+    });
+  });
+
+  // ============================================================
+  // SEÇÃO: Prévia (mockup estático, sem depender do TikTok aberto)
+  // ============================================================
+  const secaoPrevia = criarSecao("previa");
+  secaoPrevia.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Prévia</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Números de exemplo, só pra conferir a aparência.</p>`;
+
+  const previaWrap = document.createElement("div");
+  previaWrap.style.cssText = "display:flex;flex-direction:column;gap:14px;";
+  secaoPrevia.appendChild(previaWrap);
+
+  const previaMetasBox = document.createElement("div");
+  previaMetasBox.className = "painel-card";
+  previaMetasBox.style.cssText = "padding:16px;border-top:3px solid var(--ic-previa);";
+  previaMetasBox.innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Metas da live</div>
+    <div style="background:repeating-conic-gradient(var(--bg-alt) 0% 25%, var(--bg) 0% 50%) 0 0/16px 16px;border-radius:8px;padding:20px;">
+      <div id="previaMetas"></div>
+    </div>`;
+  previaWrap.appendChild(previaMetasBox);
+
+  const previaRankingBox = document.createElement("div");
+  previaRankingBox.className = "painel-card";
+  previaRankingBox.style.cssText = "padding:16px;border-top:3px solid var(--ic-previa);";
+  previaRankingBox.innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Ranking de seguidores</div>
+    <div style="background:repeating-conic-gradient(var(--bg-alt) 0% 25%, var(--bg) 0% 50%) 0 0/16px 16px;border-radius:8px;padding:20px;display:flex;">
+      <div id="previaRanking"></div>
+    </div>`;
+  previaWrap.appendChild(previaRankingBox);
+
+  const notaPrevia = document.createElement("p");
+  notaPrevia.style.cssText = "font-size:12px;color:var(--text-faint);margin:12px 0 0;";
+  notaPrevia.textContent = "O fundo quadriculado é referência de transparência — no OBS/TikTok Studio o overlay fica por cima da câmera/jogo.";
+  secaoPrevia.appendChild(notaPrevia);
+
+  const pontosExemplo = {};
+  cfg.tiers.forEach((tier, i) => {
+    const fracoes = [1, 0.6, 0.25, 0.05];
+    pontosExemplo[tier.id] = Math.round(tier.pontos * (fracoes[i] ?? 0.3));
+  });
+  const rankingExemplo = [
+    { nickname: "usuario1", pontos: 1240 },
+    { nickname: "usuario2", pontos: 860 },
+    { nickname: "usuario3", pontos: 410 },
+  ];
+
+  function renderPrevias() {
+    const t = lerTemaDoForm();
+    const fonteCss = FONTES[t.fonte] ? FONTES[t.fonte].css : "Arial, sans-serif";
+    const rootEstilo = `background:${t.corFundo};border-radius:${t.raio}px;padding:20px 24px 24px;font-family:${fonteCss};`;
+
+    document.getElementById("previaMetas").innerHTML =
+      `<div style="${rootEstilo}">${gerarHtmlTiers(t, cfg.tiers, pontosExemplo)}</div>`;
+
+    document.getElementById("previaRanking").innerHTML =
+      `<div style="${rootEstilo}max-width:320px;">
+        <div style="font-size:13px;color:${t.corTextoSec};margin-bottom:10px;">Top seguidores da live</div>
+        ${gerarHtmlRanking(t, rankingExemplo)}
+      </div>`;
+  }
+
+  // ============================================================
+  // SEÇÃO: Aparência
+  // ============================================================
+  const secaoAparencia = criarSecao("aparencia");
+  secaoAparencia.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Aparência</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Cores, fonte e arredondamento dos overlays.</p>`;
+
+  const temaBox = document.createElement("div");
+  temaBox.className = "painel-card";
+  temaBox.style.cssText = "padding:18px;border-top:3px solid var(--ic-aparencia);";
+  secaoAparencia.appendChild(temaBox);
+
+  temaBox.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px;">
+      ${Object.keys(PRESETS_TEMA).map(nome => `<button data-preset="${nome}" style="background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 13px;font-size:12px;cursor:pointer;">${nome}</button>`).join("")}
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;">
+      ${campoCor("corPrimaria", "Destaque", cfg.tema.corPrimaria)}
+      ${campoCor("corFundo", "Fundo", cfg.tema.corFundo)}
+      ${campoCor("corCard", "Card", cfg.tema.corCard)}
+      ${campoCor("corTexto", "Texto", cfg.tema.corTexto)}
+      ${campoCor("corTextoSec", "Texto sec.", cfg.tema.corTextoSec)}
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+      <div><label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Fonte</label>
+        <select id="fonte" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;">
+          ${Object.entries(FONTES).map(([k, f]) => `<option value="${k}" ${cfg.tema.fonte === k ? "selected" : ""}>${f.nome}</option>`).join("")}
+        </select></div>
+      <div><label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Arredondamento (px)</label>
+        <input id="raio" type="number" value="${cfg.tema.raio}" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/></div>
+    </div>
+  `;
+  function campoCor(id, label, valor) {
+    return `<div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">${label}</label>
+      <input id="${id}" type="color" value="${valor}" style="width:100%;height:36px;border:1px solid var(--border);border-radius:6px;background:var(--bg-alt);cursor:pointer;padding:2px;"/></div>`;
+  }
+
+  function lerTemaDoForm() {
+    return {
+      corPrimaria: document.getElementById("corPrimaria").value,
+      corFundo: document.getElementById("corFundo").value,
+      corCard: document.getElementById("corCard").value,
+      corTexto: document.getElementById("corTexto").value,
+      corTextoSec: document.getElementById("corTextoSec").value,
+      raio: Number(document.getElementById("raio").value),
+      fonte: document.getElementById("fonte").value,
+    };
+  }
+
+  temaBox.querySelectorAll("input, select").forEach(el => el.addEventListener("input", renderPrevias));
+  temaBox.querySelectorAll("button[data-preset]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const p = PRESETS_TEMA[btn.dataset.preset];
+      document.getElementById("corPrimaria").value = p.corPrimaria;
+      document.getElementById("corFundo").value = p.corFundo;
+      document.getElementById("corCard").value = p.corCard;
+      document.getElementById("corTexto").value = p.corTexto;
+      document.getElementById("corTextoSec").value = p.corTextoSec;
+      document.getElementById("raio").value = p.raio;
+      document.getElementById("fonte").value = p.fonte;
+      renderPrevias();
+    });
+  });
+  renderPrevias();
+
+  // ============================================================
+  // SEÇÃO: Configurações
+  // ============================================================
+  const secaoConfig = criarSecao("config");
+  secaoConfig.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Configurações</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Pontos por ação e as metas de cada tier.</p>`;
+
+  const form = document.createElement("div");
+  form.className = "painel-card";
+  form.style.cssText = "padding:18px;border-top:3px solid var(--ic-config);";
+  secaoConfig.appendChild(form);
+
+  form.innerHTML = `
+    ${campoTexto("wsUrl", "Endereço do TikFinity", cfg.tikfinityWsUrl)}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;">
+      ${campoNumero("vMensagem", "Pontos por mensagem", cfg.valores.mensagem)}
+      ${campoNumero("vLikeACada", "A cada X likes", cfg.valores.likeACada)}
+      ${campoNumero("vLikeValor", "...vale quantos pontos", cfg.valores.likeValor)}
+      ${campoNumero("vPresente", "Pontos por diamante", cfg.valores.presente)}
+      ${campoNumero("vSeguidor", "Pontos por novo seguidor", cfg.valores.seguidor)}
+      ${campoNumero("vCompartilhar", "Pontos por compartilhar", cfg.valores.compartilhamento)}
+    </div>
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+      <label style="font-size:13px;display:flex;align-items:center;gap:7px;color:var(--text);">
+        <input type="checkbox" id="exigirSeguidor" ${cfg.exigirSeguidor ? "checked" : ""}/> Ranking só conta seguidor confirmado
+      </label>
+      <div>${campoNumero("tamanhoRanking", "Tamanho do ranking", cfg.tamanhoRanking, "width:120px;")}</div>
+    </div>
+    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Tiers de meta</div>
+      <div id="listaTiers"></div>
+      <button id="addTier" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar tier</button>
+    </div>
+    <button id="salvar" style="margin-top:24px;background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;">Salvar configurações</button>
+    <span id="salvoMsg" style="margin-left:12px;font-size:13px;color:var(--accent);display:none;font-family:var(--font-mono);">salvo</span>
+  `;
+
+  function campoTexto(id, label, valor) {
+    return `<div><label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">${label}</label>
+      <input id="${id}" type="text" value="${valor}" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/></div>`;
+  }
+  function campoNumero(id, label, valor, estiloExtra) {
+    return `<div style="${estiloExtra || ''}"><label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">${label}</label>
+      <input id="${id}" type="number" value="${valor}" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/></div>`;
+  }
+
+  const fontesDisponiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
+  let tiersEditando = structuredClone(cfg.tiers);
+
+  function renderListaTiers() {
+    const el = document.getElementById("listaTiers");
+    el.innerHTML = tiersEditando.map((t, i) => `
+      <div style="background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">nome</label>
+            <input data-i="${i}" data-campo="nome" type="text" value="${t.nome}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">pontos</label>
+            <input data-i="${i}" data-campo="pontos" type="number" value="${t.pontos}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">escopo</label>
+            <select data-i="${i}" data-campo="escopo" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;">
+              <option value="live" ${t.escopo === "live" ? "selected" : ""}>live</option>
+              <option value="mensal" ${t.escopo === "mensal" ? "selected" : ""}>mensal</option>
+            </select></div>
+          <button data-remove="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;">
+          ${fontesDisponiveis.map(f => `
+            <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">
+              <input type="checkbox" data-i="${i}" data-fonte="${f}" ${t.fontes.includes(f) ? "checked" : ""}/> ${f}
+            </label>
+          `).join("")}
+        </div>
+      </div>
+    `).join("");
+
+    el.querySelectorAll("input[data-campo], select[data-campo]").forEach(input => {
+      input.addEventListener("input", () => {
+        const i = Number(input.dataset.i);
+        const campo = input.dataset.campo;
+        tiersEditando[i][campo] = campo === "pontos" ? Number(input.value) : input.value;
+      });
+    });
+    el.querySelectorAll("input[data-fonte]").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const i = Number(cb.dataset.i);
+        const fonte = cb.dataset.fonte;
+        const set = new Set(tiersEditando[i].fontes);
+        if (cb.checked) set.add(fonte); else set.delete(fonte);
+        tiersEditando[i].fontes = Array.from(set);
+      });
+    });
+    el.querySelectorAll("button[data-remove]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        tiersEditando.splice(Number(btn.dataset.remove), 1);
+        renderListaTiers();
+      });
+    });
+  }
+  renderListaTiers();
+
+  document.getElementById("addTier").addEventListener("click", () => {
+    tiersEditando.push({ id: "tier" + Date.now(), nome: "novo tier", pontos: 500, escopo: "live", fontes: ["presente"] });
+    renderListaTiers();
+  });
+
+  document.getElementById("salvar").addEventListener("click", () => {
+    const novo = {
+      tikfinityWsUrl: document.getElementById("wsUrl").value,
+      valores: {
+        mensagem: Number(document.getElementById("vMensagem").value),
+        likeACada: Number(document.getElementById("vLikeACada").value),
+        likeValor: Number(document.getElementById("vLikeValor").value),
+        presente: Number(document.getElementById("vPresente").value),
+        seguidor: Number(document.getElementById("vSeguidor").value),
+        compartilhamento: Number(document.getElementById("vCompartilhar").value),
+      },
+      exigirSeguidor: document.getElementById("exigirSeguidor").checked,
+      tamanhoRanking: Number(document.getElementById("tamanhoRanking").value),
+      tiers: tiersEditando,
+      tema: lerTemaDoForm(),
+    };
+    salvarConfig(novo);
+    renderPrevias();
+    const msg = document.getElementById("salvoMsg");
+    msg.style.display = "inline";
+    setTimeout(() => (msg.style.display = "none"), 1500);
+  });
+}
+
+function copiarTexto(texto) {
+  const temp = document.createElement("textarea");
+  temp.value = texto;
+  temp.style.position = "fixed";
+  temp.style.opacity = "0";
+  document.body.appendChild(temp);
+  temp.select();
+  try { document.execCommand("copy"); } catch (e) {}
+  document.body.removeChild(temp);
+}
+
+/* ============================================================
+   SIMULADOR DE EVENTOS (modo de teste, sem precisar de live)
+   - ativado com ?sim=1 no final do link do overlay
+   - gera eventos falsos (chat, like, presente, seguidor,
+   compartilhar) em intervalos aleatórios, então dá pra testar
+   o overlay no OBS/TikTok Studio com a live apagada e o
+   TikFinity fechado.
+   ============================================================ */
+function gerarEventoFake() {
+  const nicks = ["ana_lives", "joao22", "gamer_br", "luiza.ttk", "pedro_streams", "maria123", "lucas_gg", "bia_fan"];
+  const sorteio = Math.random() * 100;
+  const nickname = nicks[Math.floor(Math.random() * nicks.length)];
+  const userId = "teste_" + nickname;
+  if (sorteio < 40) {
+    return { event: "chat", data: { userId, nickname, comment: "mensagem de teste" } };
+  } else if (sorteio < 70) {
+    return { event: "like", data: { userId, nickname, likeCount: Math.floor(Math.random() * 30) + 1 } };
+  } else if (sorteio < 88) {
+    const diamantes = [1, 5, 10, 50, 100][Math.floor(Math.random() * 5)];
+    return { event: "gift", data: { userId, nickname, diamondCount: diamantes, repeatCount: 1 } };
+  } else if (sorteio < 96) {
+    return { event: "follow", data: { userId, nickname, followRole: 1 } };
+  } else {
+    return { event: "share", data: { userId, nickname } };
+  }
+}
+
+function iniciarSimulador(processarEvento) {
+  console.log("[modo teste] gerando eventos falsos automaticamente — sem live e sem TikFinity");
+  processarEvento(gerarEventoFake());
+  setInterval(() => processarEvento(gerarEventoFake()), 1200 + Math.random() * 1800);
+}
+
+/* ============================================================
+   OVERLAY: METAS
+   ============================================================ */
+function renderMetas() {
+  const cfg = carregarConfig();
+  const t = cfg.tema;
+  const fonteCss = carregarFonteGoogle(t.fonte);
+  document.body.style.fontFamily = fonteCss;
+
+  const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
+  let liveState = Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
+  let mensalState = JSON.parse(localStorage.getItem("mensalPorFonte") || "null")
+    || Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
+
+  const mesSalvo = localStorage.getItem("mesReferencia");
+  const mesAtual = new Date().getMonth() + "-" + new Date().getFullYear();
+  if (mesSalvo !== mesAtual) {
+    mensalState = Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
+    localStorage.setItem("mesReferencia", mesAtual);
+  }
+  function salvarMensal() { localStorage.setItem("mensalPorFonte", JSON.stringify(mensalState)); }
+  function pontosDoTier(tier) {
+    const state = tier.escopo === "live" ? liveState : mensalState;
+    return tier.fontes.reduce((s, f) => s + (state[f] || 0), 0);
+  }
+
+  const root = document.createElement("div");
+  root.style.cssText = `background:${t.corFundo};border-radius:${t.raio}px;padding:20px 24px 24px;font-family:${fonteCss};`;
+  document.body.appendChild(root);
+
+  function render() {
+    const pontosMap = {};
+    cfg.tiers.forEach(tier => { pontosMap[tier.id] = pontosDoTier(tier); });
+    root.innerHTML = gerarHtmlTiers(t, cfg.tiers, pontosMap);
+  }
+  render();
+
+  function processarEventoMetas(payload) {
+    console.log("[overlay-metas] evento:", payload);
+    const tipo = payload.event;
+    const data = payload.data || {};
+    const v = cfg.valores;
+    if (tipo === "gift") {
+      const diamantes = data.diamondCount ?? data.diamonds ?? data.value ?? 0;
+      const repeticoes = data.repeatCount ?? data.combo ?? 1;
+      const ganhos = diamantes * repeticoes * v.presente;
+      liveState.presente += ganhos;
+      mensalState.presente += ganhos;
+      salvarMensal();
+    }
+    if (tipo === "chat" || tipo === "comment") liveState.mensagem += v.mensagem;
+    if (tipo === "like") {
+      const qtd = data.likeCount ?? data.count ?? 1;
+      liveState.like += Math.floor(qtd / v.likeACada) * v.likeValor;
+    }
+    if (tipo === "follow" || tipo === "member") liveState.seguidor += v.seguidor;
+    if (tipo === "share") liveState.compartilhamento += v.compartilhamento;
+    render();
+  }
+
+  function conectar() {
+    const ws = new WebSocket(cfg.tikfinityWsUrl);
+    ws.onopen = () => console.log("[overlay-metas] conectado ao TikFinity");
+    ws.onmessage = (msg) => {
+      let payload;
+      try { payload = JSON.parse(msg.data); } catch (e) { return; }
+      processarEventoMetas(payload);
+    };
+    ws.onclose = () => setTimeout(conectar, 3000);
+    ws.onerror = () => ws.close();
+  }
+
+  if (params.get("sim") === "1") {
+    iniciarSimulador(processarEventoMetas);
+  } else {
+    conectar();
+  }
+}
+
+/* ============================================================
+   OVERLAY: RANKING
+   ============================================================ */
+function renderRanking() {
+  const cfg = carregarConfig();
+  const t = cfg.tema;
+  const fonteCss = carregarFonteGoogle(t.fonte);
+  document.body.style.fontFamily = fonteCss;
+
+  let ranking = JSON.parse(localStorage.getItem("rankingUsuarios") || "{}");
+  let seguidoresConhecidos = JSON.parse(localStorage.getItem("seguidoresConhecidos") || "{}");
+  function salvarRanking() { localStorage.setItem("rankingUsuarios", JSON.stringify(ranking)); }
+  function salvarSeguidores() { localStorage.setItem("seguidoresConhecidos", JSON.stringify(seguidoresConhecidos)); }
+
+  function ehSeguidor(userId, data) {
+    if (typeof data.followRole === "number") {
+      if (data.followRole >= 1) { seguidoresConhecidos[userId] = true; salvarSeguidores(); }
+      return data.followRole >= 1;
+    }
+    if (typeof data.isFollower === "boolean") {
+      if (data.isFollower) { seguidoresConhecidos[userId] = true; salvarSeguidores(); }
+      return data.isFollower;
+    }
+    return !!seguidoresConhecidos[userId];
+  }
+  function somar(userId, nickname, pontos) {
+    if (!ranking[userId]) ranking[userId] = { nickname, pontos: 0 };
+    ranking[userId].nickname = nickname || ranking[userId].nickname;
+    ranking[userId].pontos += pontos;
+    salvarRanking();
+  }
+
+  const root = document.createElement("div");
+  root.style.cssText = `background:${t.corFundo};border-radius:${t.raio}px;padding:16px 20px;max-width:320px;font-family:${fonteCss};`;
+  document.body.appendChild(root);
+  root.innerHTML = `<div style="font-size:13px;color:${t.corTextoSec};margin-bottom:10px;">Top seguidores da live</div><div id="lista"></div>`;
+
+  function render() {
+    const top = Object.values(ranking).sort((a, b) => b.pontos - a.pontos).slice(0, cfg.tamanhoRanking);
+    document.getElementById("lista").innerHTML = gerarHtmlRanking(t, top);
+  }
+  render();
+
+  function processarEventoRanking(payload) {
+    console.log("[overlay-ranking] evento:", payload);
+    const tipo = payload.event;
+    const data = payload.data || {};
+    const v = cfg.valores;
+    const userId = data.userId ?? data.uniqueId ?? data.user?.userId ?? data.user?.uniqueId;
+    const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
+    if (!userId) return;
+    if (tipo === "follow") { seguidoresConhecidos[userId] = true; salvarSeguidores(); }
+    const conta = !cfg.exigirSeguidor || ehSeguidor(userId, data);
+    if (!conta) return;
+    if (tipo === "gift") {
+      const diamantes = data.diamondCount ?? data.diamonds ?? data.value ?? 0;
+      const repeticoes = data.repeatCount ?? data.combo ?? 1;
+      somar(userId, nickname, diamantes * repeticoes * v.presente);
+    }
+    if (tipo === "chat" || tipo === "comment") somar(userId, nickname, v.mensagem);
+    if (tipo === "like") {
+      const qtd = data.likeCount ?? data.count ?? 1;
+      const ganhos = Math.floor(qtd / v.likeACada) * v.likeValor;
+      if (ganhos > 0) somar(userId, nickname, ganhos);
+    }
+    if (tipo === "follow" || tipo === "member") somar(userId, nickname, v.seguidor);
+    if (tipo === "share") somar(userId, nickname, v.compartilhamento);
+    render();
+  }
+
+  function conectar() {
+    const ws = new WebSocket(cfg.tikfinityWsUrl);
+    ws.onopen = () => console.log("[overlay-ranking] conectado ao TikFinity");
+    ws.onmessage = (msg) => {
+      let payload;
+      try { payload = JSON.parse(msg.data); } catch (e) { return; }
+      processarEventoRanking(payload);
+    };
+    ws.onclose = () => setTimeout(conectar, 3000);
+    ws.onerror = () => ws.close();
+  }
+
+  if (params.get("sim") === "1") {
+    iniciarSimulador(processarEventoRanking);
+  } else {
+    conectar();
+  }
+}
+</script>
+</body>
+</html>

@@ -189,7 +189,7 @@
    ============================================================ */
 
 const OVERLAYS = [
-  { id: "metas",   nome: "Metas da live",        desc: "Grade de metas com progresso animado" },
+  { id: "metas",   nome: "Prêmios da live",       desc: "Avisa quando um espectador desbloqueia um prêmio" },
   { id: "ranking", nome: "Ranking de seguidores", desc: "Top espectadores por pontos" },
   { id: "alerta",  nome: "Alerta de presente",    desc: "Card temporário quando chega um presente grande" },
   { id: "combo",   nome: "Combo / sequência",     desc: "Contador ao vivo de likes e presentes em sequência" },
@@ -221,11 +221,14 @@ const CONFIG_PADRAO = {
   },
   exigirSeguidor: true,
   tamanhoRanking: 5,
+  // cada tier é um prêmio que O ESPECTADOR ganha quando os pontos DELE
+  // (somando só as fontes listadas) baterem o valor — não é uma meta
+  // coletiva da live. O progresso de cada um nunca zera sozinho.
   tiers: [
-    { id: "baixo",  nome: "Jam track",       pontos: 315,  escopo: "live",   fontes: ["mensagem", "like", "compartilhamento"] },
-    { id: "medio1", nome: "Emote",            pontos: 785,  escopo: "live",   fontes: ["presente"] },
-    { id: "medio2", nome: "Battle pass",       pontos: 1375, escopo: "mensal", fontes: ["presente"] },
-    { id: "epico",  nome: "Bundle de skin",    pontos: 3410, escopo: "mensal", fontes: ["presente"] },
+    { id: "baixo",  nome: "Jam track",       pontos: 315,  fontes: ["mensagem", "like", "compartilhamento"] },
+    { id: "medio1", nome: "Emote",            pontos: 785,  fontes: ["presente"] },
+    { id: "medio2", nome: "Battle pass",       pontos: 1375, fontes: ["presente"] },
+    { id: "epico",  nome: "Bundle de skin",    pontos: 3410, fontes: ["presente"] },
   ],
   tema: {
     corPrimaria: "#1D9E75",
@@ -240,7 +243,26 @@ const CONFIG_PADRAO = {
   animacoes: true,
   alerta: { ativo: true, valorMinimo: 50, duracaoMs: 5000 },
   combo: { ativo: true, janelaMs: 2500, fontes: ["like", "presente"] },
+  sons: {
+    volume: 70,
+    presente: { ativo: true, som: "moeda" },
+    premio:   { ativo: true, som: "fanfarra" },
+    seguidor: { ativo: true, som: "ding" },
+    combo:    { ativo: true, som: "pop", aCada: 5 },
+  },
 };
+
+// mescla um bloco de sons salvo com o padrão, campo por campo
+// (pra não perder chaves novas quando o config salvo é antigo)
+function mesclarSons(padrao, salvo) {
+  const out = structuredClone(padrao);
+  if (!salvo) return out;
+  if (typeof salvo.volume === "number") out.volume = salvo.volume;
+  ["presente", "premio", "seguidor", "combo"].forEach(k => {
+    if (salvo[k]) out[k] = Object.assign({}, padrao[k], salvo[k]);
+  });
+  return out;
+}
 
 function carregarConfig() {
   try {
@@ -251,6 +273,7 @@ function carregarConfig() {
     cfg.valores = Object.assign(structuredClone(CONFIG_PADRAO.valores), salvo.valores || {});
     cfg.alerta = Object.assign(structuredClone(CONFIG_PADRAO.alerta), salvo.alerta || {});
     cfg.combo = Object.assign(structuredClone(CONFIG_PADRAO.combo), salvo.combo || {});
+    cfg.sons = mesclarSons(CONFIG_PADRAO.sons, salvo.sons);
     cfg.animacoes = salvo.animacoes !== undefined ? salvo.animacoes : CONFIG_PADRAO.animacoes;
     return cfg;
   } catch (e) {
@@ -314,6 +337,49 @@ function animarNumero(el, de, para, duracaoMs) {
   requestAnimationFrame(passo);
 }
 
+/* ============================================================
+   SONS (sintetizados via Web Audio API — sem arquivo externo)
+   ============================================================ */
+let audioCtxCompartilhado = null;
+function obterAudioCtx() {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) return null;
+  if (!audioCtxCompartilhado) audioCtxCompartilhado = new AC();
+  if (audioCtxCompartilhado.state === "suspended") audioCtxCompartilhado.resume();
+  return audioCtxCompartilhado;
+}
+
+// toca uma nota simples: freq em Hz, duração/atraso em ms
+function tocarTom(freq, duracaoMs, atrasoMs, tipoOnda, volume) {
+  const ctx = obterAudioCtx();
+  if (!ctx) return;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = tipoOnda || "sine";
+  osc.frequency.value = freq;
+  const inicio = ctx.currentTime + (atrasoMs || 0) / 1000;
+  const fim = inicio + duracaoMs / 1000;
+  gain.gain.setValueAtTime(0.0001, inicio);
+  gain.gain.linearRampToValueAtTime(Math.max(0.0001, volume), inicio + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, fim);
+  osc.connect(gain).connect(ctx.destination);
+  osc.start(inicio);
+  osc.stop(fim + 0.03);
+}
+
+const SONS_DISPONIVEIS = {
+  ding:     { nome: "Ding",     tocar: (v) => tocarTom(880, 180, 0, "sine", v) },
+  moeda:    { nome: "Moeda",    tocar: (v) => { tocarTom(988, 90, 0, "square", v * 0.5); tocarTom(1319, 140, 90, "square", v * 0.5); } },
+  fanfarra: { nome: "Fanfarra", tocar: (v) => { tocarTom(523, 140, 0, "triangle", v * 0.6); tocarTom(659, 140, 110, "triangle", v * 0.6); tocarTom(784, 240, 220, "triangle", v * 0.6); } },
+  pop:      { nome: "Pop",      tocar: (v) => tocarTom(220, 70, 0, "square", v * 0.4) },
+};
+
+function tocarSom(nomeSom, volume0a100) {
+  const som = SONS_DISPONIVEIS[nomeSom];
+  if (!som) return;
+  try { som.tocar(((volume0a100 ?? 70) / 100) * 0.6); } catch (e) { console.warn("[som] falhou:", e); }
+}
+
 // markup de um switch liga/desliga
 function toggleHtml(id, label, checked) {
   return `<label class="toggle"><input type="checkbox" id="${id}" ${checked ? "checked" : ""}/><span class="trilha"></span>${label}</label>`;
@@ -364,13 +430,15 @@ function gerarHtmlRanking(tema, lista, posicoesAnteriores, animar) {
     const classeAnim = animar ? ' class="linha-ranking-anim"' : "";
     const atraso = animar ? `animation-delay:${i * 45}ms;` : "";
     const borda = i < lista.length - 1 ? `border-bottom:1px solid ${tema.corBorda};` : "";
+    const qtdPremios = u.premios || 0;
+    const badgePremio = qtdPremios > 0 ? `<span title="${qtdPremios} prêmio(s) desbloqueado(s)" style="margin-left:6px;font-size:11px;color:${tema.corTextoSec};">🏆${qtdPremios > 1 ? "×" + qtdPremios : ""}</span>` : "";
     return `
       <div${classeAnim} style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;${atraso}${borda}">
-        <span style="font-size:14px;color:${tema.corTexto};display:flex;align-items:center;">
+        <span style="font-size:14px;color:${tema.corTexto};display:flex;align-items:center;min-width:0;">
           <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:${tema.corPrimaria}33;color:${tema.corPrimaria};font-size:11px;font-weight:700;margin-right:8px;flex-shrink:0;">${i + 1}</span>
-          ${seta}${u.nickname}
+          <span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${seta}${u.nickname}</span>${badgePremio}
         </span>
-        <span style="font-size:13px;color:${tema.corPrimaria};font-weight:bold;">${u.pontos} pts</span>
+        <span style="font-size:13px;color:${tema.corPrimaria};font-weight:bold;flex-shrink:0;margin-left:8px;">${u.pontos} pts</span>
       </div>
     `;
   }).join("");
@@ -535,8 +603,10 @@ function renderPainel() {
   const previaMetasBox = document.createElement("div");
   previaMetasBox.className = "painel-card";
   previaMetasBox.style.cssText = "padding:16px;border-top:3px solid var(--ic-previa);";
-  previaMetasBox.innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Metas da live</div>
-    ${caixaQuadriculada(`<div id="previaMetas"></div>`)}`;
+  previaMetasBox.innerHTML = `<div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);letter-spacing:0.06em;text-transform:uppercase;margin-bottom:10px;">Prêmio desbloqueado (metas)</div>
+    <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Cada espectador junta pontos por conta própria. Quando ele bate um tier, aparece um card assim avisando.</p>
+    ${caixaQuadriculada(`<div id="previaPremioContainer" style="display:flex;flex-direction:column;gap:8px;min-height:60px;"></div>`)}
+    <button id="btnSimularPremio" style="margin-top:12px;background:var(--bg-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 14px;font-size:12px;cursor:pointer;">Simular prêmio</button>`;
   previaWrap.appendChild(previaMetasBox);
 
   const previaRankingBox = document.createElement("div");
@@ -567,12 +637,38 @@ function renderPainel() {
   notaPrevia.textContent = "O fundo quadriculado é referência de transparência — no OBS/TikTok Studio o overlay fica por cima da câmera/jogo.";
   secaoPrevia.appendChild(notaPrevia);
 
-  const apiAlertaPreview = criarNoAlerta(previaAlertaBox.querySelector("#previaAlertaContainer"));
+  const apiAlertaPreview = criarFilaDeCards(previaAlertaBox.querySelector("#previaAlertaContainer"));
   document.getElementById("btnSimularAlerta").addEventListener("click", () => {
     const tPrev = lerTemaDoForm();
     const grande = Math.random() > 0.5;
-    apiAlertaPreview.mostrar(grande ? "fã_vip" : "usuario_teste", grande ? 999 : 120, grande, tPrev, 3200);
+    const nickname = grande ? "fã_vip" : "usuario_teste";
+    const valor = grande ? 999 : 120;
+    apiAlertaPreview.mostrar({
+      icone: "🎁",
+      titulo: grande ? "🏆 maior presente da live" : "novo presente",
+      subtitulo: `${nickname} <span style="color:${tPrev.corPrimaria};">· ${valor} pts</span>`,
+      destaque: grande,
+      tema: tPrev,
+      duracaoMs: 3200,
+      animacoesAtivas: true,
+    });
   });
+
+  const apiPremioPreview = criarFilaDeCards(previaMetasBox.querySelector("#previaPremioContainer"));
+  document.getElementById("btnSimularPremio").addEventListener("click", () => {
+    const tPrev = lerTemaDoForm();
+    const tier = cfg.tiers[Math.floor(Math.random() * cfg.tiers.length)] || { nome: "prêmio" };
+    apiPremioPreview.mostrar({
+      icone: "🏆",
+      titulo: "prêmio desbloqueado",
+      subtitulo: `usuario_teste ganhou <span style="color:${tPrev.corPrimaria};">${tier.nome}</span>`,
+      destaque: true,
+      tema: tPrev,
+      duracaoMs: 3600,
+      animacoesAtivas: true,
+    });
+  });
+
   document.getElementById("btnSimularCombo").addEventListener("click", () => {
     if (!apiComboPreview) return;
     let i = 0;
@@ -584,28 +680,18 @@ function renderPainel() {
     })();
   });
 
-  const pontosExemplo = {};
-  cfg.tiers.forEach((tier, i) => {
-    const fracoes = [1, 0.6, 0.25, 0.05];
-    pontosExemplo[tier.id] = Math.round(tier.pontos * (fracoes[i] ?? 0.3));
-  });
   const rankingExemplo = [
-    { id: "u1", nickname: "usuario1", pontos: 1240 },
-    { id: "u2", nickname: "usuario2", pontos: 860 },
-    { id: "u3", nickname: "usuario3", pontos: 410 },
+    { id: "u1", nickname: "usuario1", pontos: 1240, premios: 2 },
+    { id: "u2", nickname: "usuario2", pontos: 860, premios: 1 },
+    { id: "u3", nickname: "usuario3", pontos: 410, premios: 0 },
   ];
 
   function renderPrevias() {
     const t = lerTemaDoForm();
-    const fonteCss = FONTES[t.fonte] ? FONTES[t.fonte].css : "Arial, sans-serif";
-    const rootEstilo = `background:${t.corFundo};border-radius:${t.raio}px;padding:20px 24px 24px;font-family:${fonteCss};`;
-
-    document.getElementById("previaMetas").innerHTML =
-      `<div style="${rootEstilo}">${gerarHtmlTiers(t, cfg.tiers, pontosExemplo)}</div>`;
 
     document.getElementById("previaRanking").innerHTML =
-      `<div style="${rootEstilo}max-width:320px;">
-        <div style="font-size:13px;color:${t.corTextoSec};margin-bottom:10px;">Top seguidores da live</div>
+      `<div style="background:${t.corFundo};border-radius:${t.raio}px;padding:18px 22px;max-width:320px;">
+        <div style="font-size:12px;color:${t.corTextoSec};margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Top seguidores da live</div>
         ${gerarHtmlRanking(t, rankingExemplo, {}, false)}
       </div>`;
 
@@ -685,7 +771,7 @@ function renderPainel() {
   // SEÇÃO: Configurações
   // ============================================================
   const secaoConfig = criarSecao("config");
-  secaoConfig.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Configurações</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Pontos por ação, metas de cada tier, alerta de presente e combo.</p>`;
+  secaoConfig.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Configurações</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Pontos por ação, prêmios que cada espectador desbloqueia, alerta de presente, combo e sons.</p>`;
 
   const form = document.createElement("div");
   form.className = "painel-card";
@@ -709,7 +795,8 @@ function renderPainel() {
       <div>${campoNumero("tamanhoRanking", "Tamanho do ranking", cfg.tamanhoRanking, "width:120px;")}</div>
     </div>
     <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
-      <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Tiers de meta</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Prêmios (por espectador)</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Cada espectador acumula os pontos dele sozinho. Quando ele bate o valor de um tier, ele desbloqueia aquele prêmio — o progresso nunca zera sozinho.</p>
       <div id="listaTiers"></div>
       <button id="addTier" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar tier</button>
     </div>
@@ -736,9 +823,57 @@ function renderPainel() {
         `).join("")}
       </div>
     </div>
+    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Sons e alertas</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Sons curtos gerados na hora (não precisa de arquivo). Toca no overlay correspondente: presente no de alerta, prêmio no de metas, seguidor no de ranking, combo no de combo.</p>
+      <div style="margin-bottom:12px;">
+        <label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Volume geral</label>
+        <input id="sonsVolume" type="range" min="0" max="100" value="${cfg.sons.volume}" style="width:100%;"/>
+      </div>
+      <div id="listaSons"></div>
+    </div>
+    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+      <div style="font-size:14px;font-weight:600;margin-bottom:8px;color:#e0637a;">Zona de risco</div>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">O ranking e os prêmios de cada espectador nunca zeram sozinhos. Se quiser começar do zero (nova temporada, por exemplo), use o botão abaixo.</p>
+      <button id="resetarEspectadores" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Zerar pontos de todos os espectadores</button>
+    </div>
     <button id="salvar" style="margin-top:24px;background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;">Salvar configurações</button>
     <span id="salvoMsg" style="margin-left:12px;font-size:13px;color:var(--accent);display:none;font-family:var(--font-mono);">salvo ✓</span>
   `;
+
+  function linhaSom(id, label, valor, comACada) {
+    return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--border);">
+      ${toggleHtml("som_" + id + "_ativo", label, valor.ativo)}
+      <select id="som_${id}_tipo" style="background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;">
+        ${Object.entries(SONS_DISPONIVEIS).map(([k, s]) => `<option value="${k}" ${valor.som === k ? "selected" : ""}>${s.nome}</option>`).join("")}
+      </select>
+      ${comACada ? `<span style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">a cada <input id="som_${id}_aCada" type="number" min="1" value="${valor.aCada}" style="width:48px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px;font-size:12px;"/></span>` : ""}
+      <button data-testar-som="${id}" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Testar</button>
+    </div>`;
+  }
+  document.getElementById("listaSons").innerHTML =
+    linhaSom("presente", "Presente recebido", cfg.sons.presente) +
+    linhaSom("premio", "Prêmio desbloqueado", cfg.sons.premio) +
+    linhaSom("seguidor", "Novo seguidor", cfg.sons.seguidor) +
+    linhaSom("combo", "Combo", cfg.sons.combo, true);
+
+  form.querySelectorAll("[data-testar-som]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.testarSom;
+      const tipo = document.getElementById(`som_${id}_tipo`).value;
+      const vol = Number(document.getElementById("sonsVolume").value);
+      tocarSom(tipo, vol);
+    });
+  });
+
+  document.getElementById("resetarEspectadores").addEventListener("click", () => {
+    const ok = confirm("Isso apaga o progresso de TODOS os espectadores (ranking e prêmios). Essa ação não pode ser desfeita. Continuar?");
+    if (!ok) return;
+    localStorage.removeItem("rankingUsuarios");
+    localStorage.removeItem("premiosPorUsuario");
+    localStorage.removeItem("seguidoresConhecidos");
+    alert("Pronto — os pontos de todos os espectadores foram zerados.");
+  });
 
   function campoTexto(id, label, valor) {
     return `<div><label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">${label}</label>
@@ -755,16 +890,11 @@ function renderPainel() {
     const el = document.getElementById("listaTiers");
     el.innerHTML = tiersEditando.map((t, i) => `
       <div style="background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
-          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">nome</label>
+        <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">prêmio</label>
             <input data-i="${i}" data-campo="nome" type="text" value="${t.nome}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
-          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">pontos</label>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">pontos p/ ganhar</label>
             <input data-i="${i}" data-campo="pontos" type="number" value="${t.pontos}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
-          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">escopo</label>
-            <select data-i="${i}" data-campo="escopo" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;">
-              <option value="live" ${t.escopo === "live" ? "selected" : ""}>live</option>
-              <option value="mensal" ${t.escopo === "mensal" ? "selected" : ""}>mensal</option>
-            </select></div>
           <button data-remove="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
         </div>
         <div style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;">
@@ -803,7 +933,7 @@ function renderPainel() {
   renderListaTiers();
 
   document.getElementById("addTier").addEventListener("click", () => {
-    tiersEditando.push({ id: "tier" + Date.now(), nome: "novo tier", pontos: 500, escopo: "live", fontes: ["presente"] });
+    tiersEditando.push({ id: "tier" + Date.now(), nome: "novo prêmio", pontos: 500, fontes: ["presente"] });
     renderListaTiers();
   });
 
@@ -833,6 +963,13 @@ function renderPainel() {
         ativo: document.getElementById("comboAtivo").checked,
         janelaMs: Number(document.getElementById("comboJanela").value) * 1000,
         fontes: comboFontesSelecionadas,
+      },
+      sons: {
+        volume: Number(document.getElementById("sonsVolume").value),
+        presente: { ativo: document.getElementById("som_presente_ativo").checked, som: document.getElementById("som_presente_tipo").value },
+        premio: { ativo: document.getElementById("som_premio_ativo").checked, som: document.getElementById("som_premio_tipo").value },
+        seguidor: { ativo: document.getElementById("som_seguidor_ativo").checked, som: document.getElementById("som_seguidor_tipo").value },
+        combo: { ativo: document.getElementById("som_combo_ativo").checked, som: document.getElementById("som_combo_tipo").value, aCada: Number(document.getElementById("som_combo_aCada").value) || 1 },
       },
     };
     salvarConfig(novo);
@@ -907,44 +1044,14 @@ function conectarTikFinity(cfg, tag, aoReceber) {
 }
 
 /* ============================================================
-   OVERLAY: METAS
+   OVERLAY: METAS — prêmios por espectador
+   Cada espectador acumula pontos por conta própria (chat, likes,
+   presentes, seguir, compartilhar). Quando OS PONTOS DELE batem um
+   tier, ele desbloqueia aquele prêmio e aparece um card aqui
+   avisando. Isso nunca zera sozinho — fica salvo pra sempre no
+   localStorage até o streamer resetar manualmente pelo painel
+   (Config > Zona de risco).
    ============================================================ */
-
-// monta os cards de tier uma única vez como DOM real (não string),
-// pra poder animar largura da barra e o número sem recriar tudo
-function montarPainelTiers(container, tema, tiers) {
-  const grid = document.createElement("div");
-  grid.style.cssText = `display:grid;grid-template-columns:repeat(${tiers.length},1fr);gap:10px;`;
-  const refs = {};
-  tiers.forEach(tier => {
-    const raioCard = Math.max(4, tema.raio - 4);
-    const fonteTxt = tier.fontes.map(f => LEGENDA_FONTES[f] || f).join(" + ");
-    const card = document.createElement("div");
-    card.style.cssText = `position:relative;border-radius:${raioCard}px;padding:12px 14px;background:${tema.corCard};border:1px solid ${tema.corBorda};transition:background 0.4s ease, border-color 0.4s ease;`;
-    card.innerHTML = `
-      <div class="tier-titulo" style="font-size:13px;color:${tema.corTexto};font-weight:bold;transition:color 0.4s ease;">${tier.nome}</div>
-      <div class="tier-sub" style="font-size:11px;color:${tema.corTextoSec};margin:2px 0 8px;transition:color 0.4s ease;">via ${fonteTxt}</div>
-      <div style="height:6px;border-radius:4px;overflow:hidden;background:rgba(255,255,255,0.15);">
-        <div class="tier-barra" style="height:100%;width:0%;background:${tema.corPrimaria};transition:width 0.6s cubic-bezier(.22,1,.36,1);"></div>
-      </div>
-      <div class="tier-sub" style="font-size:11px;color:${tema.corTextoSec};margin-top:6px;transition:color 0.4s ease;"><span class="tier-atual">0</span>/${tier.pontos} pts<span class="tier-selo"></span></div>
-    `;
-    grid.appendChild(card);
-    refs[tier.id] = {
-      card,
-      barra: card.querySelector(".tier-barra"),
-      atualEl: card.querySelector(".tier-atual"),
-      seloEl: card.querySelector(".tier-selo"),
-      subEls: card.querySelectorAll(".tier-sub"),
-      tituloEl: card.querySelector(".tier-titulo"),
-      batido: false,
-      valorAtual: 0,
-    };
-  });
-  container.appendChild(grid);
-  return refs;
-}
-
 function dispararConfete(container, cor) {
   const camada = document.createElement("div");
   camada.style.cssText = "position:absolute;left:50%;top:40%;width:0;height:0;pointer-events:none;";
@@ -961,35 +1068,12 @@ function dispararConfete(container, cor) {
   setTimeout(() => camada.remove(), 750);
 }
 
-function atualizarTier(ref, tier, tema, novoValor, animacoesAtivas) {
-  const pct = Math.min(100, (novoValor / tier.pontos) * 100);
-  ref.barra.style.width = pct + "%";
-  if (animacoesAtivas) animarNumero(ref.atualEl, ref.valorAtual, novoValor, 500);
-  else ref.atualEl.textContent = novoValor;
-
-  const jaBatido = novoValor >= tier.pontos;
-  if (jaBatido && !ref.batido) {
-    ref.card.style.background = tema.corPrimaria;
-    ref.card.style.borderColor = "transparent";
-    ref.tituloEl.style.color = tema.corFundo;
-    ref.subEls.forEach(el => (el.style.color = tema.corFundo));
-    ref.seloEl.textContent = " · concluído";
-    if (animacoesAtivas) {
-      ref.card.style.setProperty("--glow-color", `rgba(${hexParaRgb(tema.corPrimaria)}, .55)`);
-      ref.card.classList.remove("anim-glow");
-      void ref.card.offsetWidth;
-      ref.card.classList.add("anim-glow");
-      dispararConfete(ref.card, tema.corPrimaria);
-    }
-  } else if (!jaBatido && ref.batido) {
-    ref.card.style.background = tema.corCard;
-    ref.card.style.borderColor = tema.corBorda;
-    ref.tituloEl.style.color = tema.corTexto;
-    ref.subEls.forEach(el => (el.style.color = tema.corTextoSec));
-    ref.seloEl.textContent = "";
-  }
-  ref.batido = jaBatido;
-  ref.valorAtual = novoValor;
+function carregarPremios() {
+  try { return JSON.parse(localStorage.getItem("premiosPorUsuario") || "{}"); }
+  catch (e) { return {}; }
+}
+function salvarPremios(obj) {
+  localStorage.setItem("premiosPorUsuario", JSON.stringify(obj));
 }
 
 function renderMetas() {
@@ -999,57 +1083,66 @@ function renderMetas() {
   document.body.style.fontFamily = fonteCss;
 
   const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
-  let liveState = Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
-  let mensalState = JSON.parse(localStorage.getItem("mensalPorFonte") || "null")
-    || Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
-
-  const mesSalvo = localStorage.getItem("mesReferencia");
-  const mesAtual = new Date().getMonth() + "-" + new Date().getFullYear();
-  if (mesSalvo !== mesAtual) {
-    mensalState = Object.fromEntries(fontesPossiveis.map(f => [f, 0]));
-    localStorage.setItem("mesReferencia", mesAtual);
-  }
-  function salvarMensal() { localStorage.setItem("mensalPorFonte", JSON.stringify(mensalState)); }
-  function pontosDoTier(tier) {
-    const state = tier.escopo === "live" ? liveState : mensalState;
-    return tier.fontes.reduce((s, f) => s + (state[f] || 0), 0);
-  }
+  const premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, tiersGanhos:[] } }
 
   const root = document.createElement("div");
-  root.style.cssText = `background:${t.corFundo};border-radius:${t.raio}px;padding:22px 26px 26px;font-family:${fonteCss};`;
+  root.style.cssText = "display:flex;flex-direction:column;gap:10px;max-width:380px;";
   document.body.appendChild(root);
+  const api = criarFilaDeCards(root);
 
-  const refsTiers = montarPainelTiers(root, t, cfg.tiers);
+  function obterUsuario(userId, nickname) {
+    if (!premios[userId]) {
+      premios[userId] = { nickname, fontes: Object.fromEntries(fontesPossiveis.map(f => [f, 0])), tiersGanhos: [] };
+    }
+    if (nickname) premios[userId].nickname = nickname;
+    return premios[userId];
+  }
 
-  function render() {
+  function checarTiers(userId) {
+    const u = premios[userId];
     cfg.tiers.forEach(tier => {
-      atualizarTier(refsTiers[tier.id], tier, t, pontosDoTier(tier), cfg.animacoes);
+      if (u.tiersGanhos.includes(tier.id)) return;
+      const soma = tier.fontes.reduce((s, f) => s + (u.fontes[f] || 0), 0);
+      if (soma >= tier.pontos) {
+        u.tiersGanhos.push(tier.id);
+        api.mostrar({
+          icone: "🏆",
+          titulo: "prêmio desbloqueado",
+          subtitulo: `${u.nickname} ganhou <span style="color:${t.corPrimaria};">${tier.nome}</span>`,
+          destaque: true,
+          tema: t,
+          duracaoMs: 5500,
+          animacoesAtivas: cfg.animacoes,
+        });
+        if (cfg.sons.premio.ativo) tocarSom(cfg.sons.premio.som, cfg.sons.volume);
+      }
     });
   }
-  render();
 
   function processarEventoMetas(payload) {
     console.log("[overlay-metas] evento:", payload);
     const tipo = payload.event;
     const data = payload.data || {};
     const v = cfg.valores;
+    const userId = data.userId ?? data.uniqueId ?? data.user?.userId ?? data.user?.uniqueId;
+    const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
+    if (!userId) return;
+    const u = obterUsuario(userId, nickname);
+
     if (tipo === "gift") {
       const valorBase = extrairValorPresente(data);
-      if (valorBase !== null) {
-        const ganhos = valorBase * v.presente;
-        liveState.presente += ganhos;
-        mensalState.presente += ganhos;
-        salvarMensal();
-      }
+      if (valorBase !== null) u.fontes.presente += valorBase * v.presente;
     }
-    if (tipo === "chat" || tipo === "comment") liveState.mensagem += v.mensagem;
+    if (tipo === "chat" || tipo === "comment") u.fontes.mensagem += v.mensagem;
     if (tipo === "like") {
       const qtd = data.likeCount ?? data.count ?? 1;
-      liveState.like += Math.floor(qtd / v.likeACada) * v.likeValor;
+      u.fontes.like += Math.floor(qtd / v.likeACada) * v.likeValor;
     }
-    if (tipo === "follow" || tipo === "member") liveState.seguidor += v.seguidor;
-    if (tipo === "share") liveState.compartilhamento += v.compartilhamento;
-    render();
+    if (tipo === "follow" || tipo === "member") u.fontes.seguidor += v.seguidor;
+    if (tipo === "share") u.fontes.compartilhamento += v.compartilhamento;
+
+    salvarPremios(premios);
+    checarTiers(userId);
   }
 
   if (params.get("sim") === "1") {
@@ -1098,10 +1191,11 @@ function renderRanking() {
 
   let ultimoTop = [];
   function render() {
+    const premios = carregarPremios(); // só leitura, quem escreve é o overlay de metas
     const mapaAntigo = {};
     ultimoTop.forEach((u, i) => { mapaAntigo[u.id] = i; });
     const top = Object.entries(ranking)
-      .map(([id, u]) => ({ id, nickname: u.nickname, pontos: u.pontos }))
+      .map(([id, u]) => ({ id, nickname: u.nickname, pontos: u.pontos, premios: premios[id]?.tiersGanhos?.length || 0 }))
       .sort((a, b) => b.pontos - a.pontos)
       .slice(0, cfg.tamanhoRanking);
     document.getElementById("lista").innerHTML = gerarHtmlRanking(t, top, mapaAntigo, cfg.animacoes);
@@ -1117,7 +1211,11 @@ function renderRanking() {
     const userId = data.userId ?? data.uniqueId ?? data.user?.userId ?? data.user?.uniqueId;
     const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
     if (!userId) return;
-    if (tipo === "follow") { seguidoresConhecidos[userId] = true; salvarSeguidores(); }
+    if (tipo === "follow") {
+      seguidoresConhecidos[userId] = true;
+      salvarSeguidores();
+      if (cfg.sons.seguidor.ativo) tocarSom(cfg.sons.seguidor.som, cfg.sons.volume);
+    }
     const conta = !cfg.exigirSeguidor || ehSeguidor(userId, data);
     if (!conta) return;
     if (tipo === "gift") {
@@ -1146,27 +1244,30 @@ function renderRanking() {
    OVERLAY: ALERTA DE PRESENTE
    ============================================================ */
 
-// gerencia uma fila de cards de alerta dentro de "container"
-// (usado no overlay de verdade e também na prévia do painel)
-function criarNoAlerta(container) {
+// gerencia uma fila de cards genéricos dentro de "container" — usado
+// pelo alerta de presente E pelo aviso de prêmio desbloqueado (e pela
+// prévia do painel). cada item: {icone, titulo, subtitulo, destaque,
+// tema, duracaoMs, animacoesAtivas}
+function criarFilaDeCards(container) {
   const fila = [];
   let mostrando = false;
 
   function processarFila() {
     if (mostrando || fila.length === 0) return;
     mostrando = true;
-    const { nickname, valor, recorde, tema, duracaoMs } = fila.shift();
+    const { icone, titulo, subtitulo, destaque, tema, duracaoMs, animacoesAtivas } = fila.shift();
     const raioCard = Math.max(8, tema.raio);
     const cartao = document.createElement("div");
-    cartao.style.cssText = `display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:${raioCard}px;background:${tema.corCard};border:1px solid ${recorde ? tema.corPrimaria : tema.corBorda};box-shadow:0 10px 30px rgba(0,0,0,.35);animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
+    cartao.style.cssText = `position:relative;display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:${raioCard}px;background:${tema.corCard};border:1px solid ${destaque ? tema.corPrimaria : tema.corBorda};box-shadow:0 10px 30px rgba(0,0,0,.35);animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
     cartao.innerHTML = `
-      <div style="width:38px;height:38px;flex-shrink:0;border-radius:50%;background:${tema.corPrimaria};display:flex;align-items:center;justify-content:center;font-size:18px;">🎁</div>
+      <div style="width:38px;height:38px;flex-shrink:0;border-radius:50%;background:${tema.corPrimaria};display:flex;align-items:center;justify-content:center;font-size:18px;">${icone}</div>
       <div style="min-width:0;">
-        <div style="font-size:12px;color:${tema.corTextoSec};">${recorde ? "🏆 maior presente da live" : "novo presente"}</div>
-        <div style="font-size:15px;color:${tema.corTexto};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${nickname} <span style="color:${tema.corPrimaria};">· ${valor} pts</span></div>
+        <div style="font-size:12px;color:${tema.corTextoSec};">${titulo}</div>
+        <div style="font-size:15px;color:${tema.corTexto};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${subtitulo}</div>
       </div>
     `;
     container.appendChild(cartao);
+    if (destaque && animacoesAtivas !== false) dispararConfete(cartao, tema.corPrimaria);
     setTimeout(() => {
       cartao.style.animation = "slideOutTop 0.3s ease both";
       setTimeout(() => {
@@ -1178,8 +1279,8 @@ function criarNoAlerta(container) {
   }
 
   return {
-    mostrar(nickname, valor, recorde, tema, duracaoMs) {
-      fila.push({ nickname, valor, recorde, tema, duracaoMs });
+    mostrar(opcoes) {
+      fila.push(opcoes);
       processarFila();
     },
   };
@@ -1194,20 +1295,30 @@ function renderAlerta() {
   const root = document.createElement("div");
   root.style.cssText = "display:flex;flex-direction:column;gap:10px;max-width:360px;";
   document.body.appendChild(root);
-  const api = criarNoAlerta(root);
+  const api = criarFilaDeCards(root);
   let recordeAtual = 0;
 
   function processarEventoAlerta(payload) {
-    if (payload.event !== "gift" || !cfg.alerta.ativo) return;
+    if (payload.event !== "gift") return;
     const data = payload.data || {};
     const valorBase = extrairValorPresente(data);
     if (valorBase === null) return;
     const valor = valorBase * cfg.valores.presente;
-    if (valor < cfg.alerta.valorMinimo) return;
+
+    if (cfg.sons.presente.ativo) tocarSom(cfg.sons.presente.som, cfg.sons.volume);
+    if (!cfg.alerta.ativo || valor < cfg.alerta.valorMinimo) return;
     const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
     const ehRecorde = valor > recordeAtual;
     if (ehRecorde) recordeAtual = valor;
-    api.mostrar(nickname, valor, ehRecorde, t, cfg.alerta.duracaoMs);
+    api.mostrar({
+      icone: "🎁",
+      titulo: ehRecorde ? "🏆 maior presente da live" : "novo presente",
+      subtitulo: `${nickname} <span style="color:${t.corPrimaria};">· ${valor} pts</span>`,
+      destaque: ehRecorde,
+      tema: t,
+      duracaoMs: cfg.alerta.duracaoMs,
+      animacoesAtivas: cfg.animacoes,
+    });
   }
 
   if (params.get("sim") === "1") {
@@ -1222,8 +1333,10 @@ function renderAlerta() {
    ============================================================ */
 
 // cria a caixinha de combo dentro de "container" e devolve uma API
-// pra registrar eventos (usado no overlay de verdade e na prévia)
-function criarNoCombo(container, tema) {
+// pra registrar eventos (usado no overlay de verdade e na prévia).
+// aoIncrementar(contagem), se passado, roda a cada incremento (pra
+// tocar som a cada N, por exemplo).
+function criarNoCombo(container, tema, aoIncrementar) {
   const caixa = document.createElement("div");
   caixa.style.cssText = `display:none;align-items:baseline;gap:8px;padding:10px 18px;border-radius:${Math.max(8, tema.raio)}px;background:${tema.corCard};border:1px solid ${tema.corBorda};width:fit-content;`;
   caixa.innerHTML = `<span class="combo-numero" style="font-size:24px;font-weight:800;color:${tema.corPrimaria};">0</span><span style="font-size:11px;color:${tema.corTextoSec};text-transform:uppercase;letter-spacing:0.05em;">combo</span>`;
@@ -1248,6 +1361,7 @@ function criarNoCombo(container, tema) {
       }
       clearTimeout(timerEsconder);
       timerEsconder = setTimeout(() => { caixa.style.display = "none"; contagem = 0; }, janelaMs);
+      if (aoIncrementar) aoIncrementar(contagem);
     },
   };
 }
@@ -1260,7 +1374,10 @@ function renderCombo() {
 
   const root = document.createElement("div");
   document.body.appendChild(root);
-  const api = criarNoCombo(root, t);
+  const api = criarNoCombo(root, t, (contagem) => {
+    const s = cfg.sons.combo;
+    if (s.ativo && s.aCada > 0 && contagem % s.aCada === 0) tocarSom(s.som, cfg.sons.volume);
+  });
 
   function processarEventoCombo(payload) {
     if (!cfg.combo.ativo) return;

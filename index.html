@@ -274,6 +274,22 @@ function carregarFonteGoogle(fonteKey) {
 
 const LEGENDA_FONTES = { mensagem: "chat", like: "likes", presente: "presente", seguidor: "seguidor", compartilhamento: "compartilhar" };
 
+// calcula o valor (diamantes x repetições) de um evento de presente,
+// respeitando presentes "de sequência" (giftType 1, tipo Rosa): esses
+// disparam um evento a cada repetição da combo, então só contamos de
+// verdade quando repeatEnd:true chega (senão o mesmo presente é
+// somado várias vezes enquanto o espectador segura o combo).
+// devolve null quando o evento deve ser ignorado (combo em andamento).
+function extrairValorPresente(data) {
+  const giftType = data.giftDetails?.giftType ?? data.giftType;
+  const repeatEnd = data.repeatEnd;
+  const contavel = giftType !== 1 || repeatEnd === true || repeatEnd === undefined;
+  if (!contavel) return null;
+  const diamantes = data.diamondCount ?? data.giftDetails?.diamondCount ?? data.diamonds ?? data.value ?? 0;
+  const repeticoes = data.repeatCount ?? data.combo ?? 1;
+  return diamantes * repeticoes;
+}
+
 // converte "#1D9E75" em "29, 158, 117" pra usar em rgba(...)
 function hexParaRgb(hex) {
   const limpo = String(hex).replace("#", "");
@@ -1018,12 +1034,13 @@ function renderMetas() {
     const data = payload.data || {};
     const v = cfg.valores;
     if (tipo === "gift") {
-      const diamantes = data.diamondCount ?? data.diamonds ?? data.value ?? 0;
-      const repeticoes = data.repeatCount ?? data.combo ?? 1;
-      const ganhos = diamantes * repeticoes * v.presente;
-      liveState.presente += ganhos;
-      mensalState.presente += ganhos;
-      salvarMensal();
+      const valorBase = extrairValorPresente(data);
+      if (valorBase !== null) {
+        const ganhos = valorBase * v.presente;
+        liveState.presente += ganhos;
+        mensalState.presente += ganhos;
+        salvarMensal();
+      }
     }
     if (tipo === "chat" || tipo === "comment") liveState.mensagem += v.mensagem;
     if (tipo === "like") {
@@ -1104,9 +1121,8 @@ function renderRanking() {
     const conta = !cfg.exigirSeguidor || ehSeguidor(userId, data);
     if (!conta) return;
     if (tipo === "gift") {
-      const diamantes = data.diamondCount ?? data.diamonds ?? data.value ?? 0;
-      const repeticoes = data.repeatCount ?? data.combo ?? 1;
-      somar(userId, nickname, diamantes * repeticoes * v.presente);
+      const valorBase = extrairValorPresente(data);
+      if (valorBase !== null) somar(userId, nickname, valorBase * v.presente);
     }
     if (tipo === "chat" || tipo === "comment") somar(userId, nickname, v.mensagem);
     if (tipo === "like") {
@@ -1184,9 +1200,9 @@ function renderAlerta() {
   function processarEventoAlerta(payload) {
     if (payload.event !== "gift" || !cfg.alerta.ativo) return;
     const data = payload.data || {};
-    const diamantes = data.diamondCount ?? data.diamonds ?? data.value ?? 0;
-    const repeticoes = data.repeatCount ?? data.combo ?? 1;
-    const valor = diamantes * repeticoes * cfg.valores.presente;
+    const valorBase = extrairValorPresente(data);
+    if (valorBase === null) return;
+    const valor = valorBase * cfg.valores.presente;
     if (valor < cfg.alerta.valorMinimo) return;
     const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
     const ehRecorde = valor > recordeAtual;

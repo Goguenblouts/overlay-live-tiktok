@@ -193,6 +193,7 @@ const OVERLAYS = [
   { id: "ranking", nome: "Ranking de seguidores", desc: "Top espectadores por pontos" },
   { id: "alerta",  nome: "Alerta de presente",    desc: "Card temporário quando chega um presente grande" },
   { id: "combo",   nome: "Combo / sequência",     desc: "Contador ao vivo de likes e presentes em sequência" },
+  { id: "vitrine", nome: "Vitrine de prêmios",    desc: "Lista dos prêmios passando em loop na tela, da direita pra esquerda" },
 ];
 
 const PRESETS_TEMA = {
@@ -282,6 +283,24 @@ function carregarConfig() {
 }
 function salvarConfig(cfg) {
   localStorage.setItem("configGeral", JSON.stringify(cfg));
+}
+
+// Codifica/decodifica a config inteira pra poder viajar dentro da própria
+// URL do overlay. Isso existe porque o painel (aberto no seu navegador normal)
+// e cada Browser Source do OBS rodam motores separados, cada um com seu
+// próprio localStorage — mudar uma config no painel NÃO chega sozinha no
+// overlay que já está rodando dentro do OBS. Ao colar um link novo (copiado
+// depois de salvar) com "&cfg=...", o overlay lê essa config embutida e
+// sobrescreve a própria cópia local automaticamente, no próximo carregamento.
+function codificarConfigParaLink(cfg) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(cfg))));
+  } catch (e) {
+    return "";
+  }
+}
+function decodificarConfigDaLink(str) {
+  return JSON.parse(decodeURIComponent(escape(atob(str))));
 }
 
 function carregarFonteGoogle(fonteKey) {
@@ -470,6 +489,16 @@ document.body.style.color = "#fff";
 const params = new URLSearchParams(location.search);
 const view = params.get("view");
 
+if (params.get("cfg")) {
+  try {
+    const cfgDaLink = decodificarConfigDaLink(params.get("cfg"));
+    localStorage.setItem("configGeral", JSON.stringify(cfgDaLink));
+    console.log("[cfg] configuração atualizada a partir do link");
+  } catch (e) {
+    console.warn("[cfg] link de configuração inválido, ignorando:", e);
+  }
+}
+
 if (params.get("reset") === "1") {
   localStorage.removeItem("rankingUsuarios");
   localStorage.removeItem("premiosPorUsuario");
@@ -486,6 +515,8 @@ if (!view) {
   renderAlerta();
 } else if (view === "combo") {
   renderCombo();
+} else if (view === "vitrine") {
+  renderVitrine();
 } else {
   document.body.innerHTML = "<div style='padding:20px;'>overlay desconhecido: " + view + "</div>";
 }
@@ -576,16 +607,19 @@ function renderPainel() {
   // SEÇÃO: Links dos overlays
   // ============================================================
   const secaoLinks = criarSecao("links");
-  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity. Se testou com o link de teste dentro do OBS, os dados falsos ficam salvos ali — use "Link de reset" uma vez pra limpar antes de ir ao vivo de verdade.</p>`;
+  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity. Se testou com o link de teste dentro do OBS, os dados falsos ficam salvos ali — use "Link de reset" uma vez pra limpar antes de ir ao vivo de verdade. <strong>Importante:</strong> o OBS roda um navegador separado do seu — toda vez que você mudar algo em Config e salvar, copie os links de novo aqui e cole no OBS, senão o overlay lá continua com as configurações antigas.</p>`;
 
   const listaWrap = document.createElement("div");
   listaWrap.style.cssText = "display:flex;flex-direction:column;gap:10px;";
   secaoLinks.appendChild(listaWrap);
 
+  const cfgCodificado = codificarConfigParaLink(cfg);
+
   OVERLAYS.forEach(ov => {
-    const link = location.origin + location.pathname + "?view=" + ov.id;
-    const linkTeste = link + "&sim=1";
-    const linkReset = link + "&reset=1";
+    const linkBase = location.origin + location.pathname + "?view=" + ov.id;
+    const link = linkBase + "&cfg=" + cfgCodificado;
+    const linkTeste = linkBase + "&sim=1&cfg=" + cfgCodificado;
+    const linkReset = linkBase + "&reset=1&cfg=" + cfgCodificado;
     const card = document.createElement("div");
     card.className = "painel-card";
     card.style.cssText = "padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:3px solid var(--ic-links);";
@@ -593,7 +627,7 @@ function renderPainel() {
       <div style="min-width:0;">
         <div style="font-size:14px;font-weight:600;margin-bottom:3px;">${ov.nome}</div>
         <div style="font-size:12px;color:var(--text-dim);margin-bottom:5px;">${ov.desc}</div>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${link}</div>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${linkBase}</div>
       </div>
       <div style="flex-shrink:0;display:flex;gap:8px;">
         <button data-link="${linkReset}" title="Abra esse link uma vez (no navegador ou trocando a URL do Browser Source no OBS) pra apagar ranking, prêmios e seguidores salvos — depois volte pro link normal" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Link de reset</button>
@@ -864,7 +898,7 @@ function renderPainel() {
       <button id="resetarEspectadores" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Zerar pontos de todos os espectadores</button>
     </div>
     <button id="salvar" style="margin-top:24px;background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;">Salvar configurações</button>
-    <span id="salvoMsg" style="margin-left:12px;font-size:13px;color:var(--accent);display:none;font-family:var(--font-mono);">salvo ✓</span>
+    <span id="salvoMsg" style="margin-left:12px;font-size:13px;color:var(--accent);display:none;font-family:var(--font-mono);">salvo ✓ — agora vá em "Links" e copie os links de novo pro OBS</span>
   `;
 
   function linhaSom(id, label, valor, comACada) {
@@ -1014,7 +1048,7 @@ function renderPainel() {
     renderPrevias();
     const msg = document.getElementById("salvoMsg");
     msg.style.display = "inline";
-    setTimeout(() => (msg.style.display = "none"), 1500);
+    setTimeout(() => (msg.style.display = "none"), 4000);
   });
 }
 
@@ -1429,6 +1463,64 @@ function renderCombo() {
   } else {
     conectarTikFinity(cfg, "overlay-combo", processarEventoCombo);
   }
+}
+
+/* ============================================================
+   OVERLAY: Vitrine de prêmios — lista os prêmios (tiers) rolando
+   em loop contínuo, da direita pra esquerda, tipo um "letreiro".
+   Não depende de eventos nem do TikFinity — só mostra os prêmios
+   configurados. Ótimo pra deixar fixo numa faixa da tela durante
+   a live inteira.
+   ============================================================ */
+function renderVitrine() {
+  const cfg = carregarConfig();
+  const t = cfg.tema;
+  const fonteCss = carregarFonteGoogle(t.fonte);
+  document.body.style.fontFamily = fonteCss;
+  document.body.style.overflow = "hidden";
+
+  const faixa = document.createElement("div");
+  faixa.style.cssText = `
+    position: fixed; left: 0; bottom: 0; width: 100%; height: 68px;
+    overflow: hidden; display: flex; align-items: center;
+    background: ${t.corFundo}e6; border-top: 2px solid ${t.corPrimaria};
+    box-sizing: border-box;
+  `;
+
+  const trilho = document.createElement("div");
+  trilho.style.cssText = "display:flex;white-space:nowrap;will-change:transform;";
+  faixa.appendChild(trilho);
+  document.body.appendChild(faixa);
+
+  function itemHtml(tier) {
+    return `
+      <span style="display:inline-flex;align-items:center;gap:12px;padding:0 44px;font-size:21px;font-weight:700;color:${t.corTexto};">
+        <span style="font-size:24px;">🏆</span>
+        <span>${tier.nome}</span>
+        <span style="color:${t.corPrimaria};">${Number(tier.pontos).toLocaleString("pt-BR")} pts</span>
+      </span>
+    `;
+  }
+
+  const tiers = (cfg.tiers && cfg.tiers.length) ? cfg.tiers : [{ id: "vazio", nome: "Configure os prêmios em Config", pontos: 0 }];
+  const conteudo = tiers.map(itemHtml).join("");
+  // duplica o conteúdo pra criar um loop sem costura: quando a 1ª cópia
+  // sai totalmente pela esquerda, a 2ª já está exatamente onde a 1ª começou.
+  trilho.innerHTML = conteudo + conteudo;
+
+  const VELOCIDADE_PX_POR_SEG = 70;
+  function iniciarAnimacao() {
+    const larguraTotal = trilho.scrollWidth / 2;
+    if (!larguraTotal) { requestAnimationFrame(iniciarAnimacao); return; }
+    const duracaoSeg = larguraTotal / VELOCIDADE_PX_POR_SEG;
+    const styleTag = document.createElement("style");
+    styleTag.textContent = `
+      @keyframes vitrineScroll { from { transform: translateX(0); } to { transform: translateX(-${larguraTotal}px); } }
+    `;
+    document.head.appendChild(styleTag);
+    trilho.style.animation = `vitrineScroll ${duracaoSeg}s linear infinite`;
+  }
+  requestAnimationFrame(iniciarAnimacao);
 }
 </script>
 </body>

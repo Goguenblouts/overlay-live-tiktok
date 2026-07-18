@@ -470,6 +470,12 @@ document.body.style.color = "#fff";
 const params = new URLSearchParams(location.search);
 const view = params.get("view");
 
+if (params.get("reset") === "1") {
+  localStorage.removeItem("rankingUsuarios");
+  localStorage.removeItem("premiosPorUsuario");
+  localStorage.removeItem("seguidoresConhecidos");
+}
+
 if (!view) {
   renderPainel();
 } else if (view === "metas") {
@@ -570,7 +576,7 @@ function renderPainel() {
   // SEÇÃO: Links dos overlays
   // ============================================================
   const secaoLinks = criarSecao("links");
-  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity.</p>`;
+  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity. Se testou com o link de teste dentro do OBS, os dados falsos ficam salvos ali — use "Link de reset" uma vez pra limpar antes de ir ao vivo de verdade.</p>`;
 
   const listaWrap = document.createElement("div");
   listaWrap.style.cssText = "display:flex;flex-direction:column;gap:10px;";
@@ -579,6 +585,7 @@ function renderPainel() {
   OVERLAYS.forEach(ov => {
     const link = location.origin + location.pathname + "?view=" + ov.id;
     const linkTeste = link + "&sim=1";
+    const linkReset = link + "&reset=1";
     const card = document.createElement("div");
     card.className = "painel-card";
     card.style.cssText = "padding:16px 18px;display:flex;justify-content:space-between;align-items:center;gap:16px;border-top:3px solid var(--ic-links);";
@@ -589,6 +596,7 @@ function renderPainel() {
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${link}</div>
       </div>
       <div style="flex-shrink:0;display:flex;gap:8px;">
+        <button data-link="${linkReset}" title="Abra esse link uma vez (no navegador ou trocando a URL do Browser Source no OBS) pra apagar ranking, prêmios e seguidores salvos — depois volte pro link normal" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Link de reset</button>
         <button data-link="${linkTeste}" title="Gera eventos falsos automaticamente — não precisa de live nem do TikFinity ligado" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Copiar link de teste</button>
         <button data-link="${link}" style="background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Copiar link</button>
       </div>

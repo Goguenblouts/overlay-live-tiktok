@@ -245,10 +245,10 @@ const CONFIG_PADRAO = {
   combo: { ativo: true, janelaMs: 2500, fontes: ["like", "presente"] },
   sons: {
     volume: 70,
-    presente: { ativo: true, som: "moeda" },
-    premio:   { ativo: true, som: "fanfarra" },
-    seguidor: { ativo: true, som: "ding" },
-    combo:    { ativo: true, som: "pop", aCada: 5 },
+    presente: { ativo: true, som: "moeda", url: "" },
+    premio:   { ativo: true, som: "fanfarra", url: "" },
+    seguidor: { ativo: true, som: "ding", url: "" },
+    combo:    { ativo: true, som: "pop", url: "", aCada: 5 },
   },
 };
 
@@ -368,16 +368,34 @@ function tocarTom(freq, duracaoMs, atrasoMs, tipoOnda, volume) {
 }
 
 const SONS_DISPONIVEIS = {
-  ding:     { nome: "Ding",     tocar: (v) => tocarTom(880, 180, 0, "sine", v) },
-  moeda:    { nome: "Moeda",    tocar: (v) => { tocarTom(988, 90, 0, "square", v * 0.5); tocarTom(1319, 140, 90, "square", v * 0.5); } },
-  fanfarra: { nome: "Fanfarra", tocar: (v) => { tocarTom(523, 140, 0, "triangle", v * 0.6); tocarTom(659, 140, 110, "triangle", v * 0.6); tocarTom(784, 240, 220, "triangle", v * 0.6); } },
-  pop:      { nome: "Pop",      tocar: (v) => tocarTom(220, 70, 0, "square", v * 0.4) },
+  ding:          { nome: "Ding",     tocar: (v) => tocarTom(880, 180, 0, "sine", v) },
+  moeda:         { nome: "Moeda",    tocar: (v) => { tocarTom(988, 90, 0, "square", v * 0.5); tocarTom(1319, 140, 90, "square", v * 0.5); } },
+  fanfarra:      { nome: "Fanfarra", tocar: (v) => { tocarTom(523, 140, 0, "triangle", v * 0.6); tocarTom(659, 140, 110, "triangle", v * 0.6); tocarTom(784, 240, 220, "triangle", v * 0.6); } },
+  pop:           { nome: "Pop",      tocar: (v) => tocarTom(220, 70, 0, "square", v * 0.4) },
+  personalizado: { nome: "Link personalizado (URL)" },
 };
 
 function tocarSom(nomeSom, volume0a100) {
   const som = SONS_DISPONIVEIS[nomeSom];
-  if (!som) return;
+  if (!som || !som.tocar) return;
   try { som.tocar(((volume0a100 ?? 70) / 100) * 0.6); } catch (e) { console.warn("[som] falhou:", e); }
+}
+
+// toca um mp3/áudio de uma URL externa (ex: link copiado do myinstants)
+function tocarSomDeUrl(url, volume0a100) {
+  if (!url) return;
+  try {
+    const audio = new Audio(url);
+    audio.volume = Math.min(1, Math.max(0, (volume0a100 ?? 70) / 100));
+    audio.play().catch(e => console.warn("[som] não consegui tocar o link (o site pode bloquear uso externo):", e));
+  } catch (e) { console.warn("[som] falhou:", e); }
+}
+
+// dispara o som configurado pra um evento (embutido ou link personalizado)
+function tocarSomConfig(somCfg, volumeGeral) {
+  if (!somCfg || !somCfg.ativo) return;
+  if (somCfg.som === "personalizado") tocarSomDeUrl(somCfg.url, volumeGeral);
+  else tocarSom(somCfg.som, volumeGeral);
 }
 
 // markup de um switch liga/desliga
@@ -825,7 +843,7 @@ function renderPainel() {
     </div>
     <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Sons e alertas</div>
-      <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Sons curtos gerados na hora (não precisa de arquivo). Toca no overlay correspondente: presente no de alerta, prêmio no de metas, seguidor no de ranking, combo no de combo.</p>
+      <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Escolha um som pronto (gerado na hora, sem arquivo) ou "Link personalizado" pra colar um link direto de áudio (ex: copiado do myinstants — clique com o botão direito no som e "Copiar endereço do áudio"). Toca no overlay correspondente: presente no de alerta, prêmio no de metas, seguidor no de ranking, combo no de combo.</p>
       <div style="margin-bottom:12px;">
         <label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Volume geral</label>
         <input id="sonsVolume" type="range" min="0" max="100" value="${cfg.sons.volume}" style="width:100%;"/>
@@ -842,13 +860,17 @@ function renderPainel() {
   `;
 
   function linhaSom(id, label, valor, comACada) {
-    return `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 0;border-top:1px solid var(--border);">
-      ${toggleHtml("som_" + id + "_ativo", label, valor.ativo)}
-      <select id="som_${id}_tipo" style="background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;">
-        ${Object.entries(SONS_DISPONIVEIS).map(([k, s]) => `<option value="${k}" ${valor.som === k ? "selected" : ""}>${s.nome}</option>`).join("")}
-      </select>
-      ${comACada ? `<span style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">a cada <input id="som_${id}_aCada" type="number" min="1" value="${valor.aCada}" style="width:48px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px;font-size:12px;"/></span>` : ""}
-      <button data-testar-som="${id}" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Testar</button>
+    const mostrarUrl = valor.som === "personalizado";
+    return `<div style="display:flex;flex-direction:column;gap:8px;padding:9px 0;border-top:1px solid var(--border);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        ${toggleHtml("som_" + id + "_ativo", label, valor.ativo)}
+        <select id="som_${id}_tipo" data-som-select="${id}" style="background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:12px;">
+          ${Object.entries(SONS_DISPONIVEIS).map(([k, s]) => `<option value="${k}" ${valor.som === k ? "selected" : ""}>${s.nome}</option>`).join("")}
+        </select>
+        ${comACada ? `<span style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">a cada <input id="som_${id}_aCada" type="number" min="1" value="${valor.aCada}" style="width:48px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px;font-size:12px;"/></span>` : ""}
+        <button data-testar-som="${id}" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Testar</button>
+      </div>
+      <input id="som_${id}_url" type="text" placeholder="https://... (link direto do arquivo de áudio)" value="${valor.url || ""}" style="${mostrarUrl ? "" : "display:none;"}width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 9px;font-size:12px;"/>
     </div>`;
   }
   document.getElementById("listaSons").innerHTML =
@@ -857,12 +879,20 @@ function renderPainel() {
     linhaSom("seguidor", "Novo seguidor", cfg.sons.seguidor) +
     linhaSom("combo", "Combo", cfg.sons.combo, true);
 
+  form.querySelectorAll("select[data-som-select]").forEach(sel => {
+    sel.addEventListener("change", () => {
+      const urlInput = document.getElementById(`som_${sel.dataset.somSelect}_url`);
+      urlInput.style.display = sel.value === "personalizado" ? "block" : "none";
+    });
+  });
+
   form.querySelectorAll("[data-testar-som]").forEach(btn => {
     btn.addEventListener("click", () => {
       const id = btn.dataset.testarSom;
       const tipo = document.getElementById(`som_${id}_tipo`).value;
+      const url = document.getElementById(`som_${id}_url`).value;
       const vol = Number(document.getElementById("sonsVolume").value);
-      tocarSom(tipo, vol);
+      tocarSomConfig({ ativo: true, som: tipo, url }, vol);
     });
   });
 
@@ -966,10 +996,10 @@ function renderPainel() {
       },
       sons: {
         volume: Number(document.getElementById("sonsVolume").value),
-        presente: { ativo: document.getElementById("som_presente_ativo").checked, som: document.getElementById("som_presente_tipo").value },
-        premio: { ativo: document.getElementById("som_premio_ativo").checked, som: document.getElementById("som_premio_tipo").value },
-        seguidor: { ativo: document.getElementById("som_seguidor_ativo").checked, som: document.getElementById("som_seguidor_tipo").value },
-        combo: { ativo: document.getElementById("som_combo_ativo").checked, som: document.getElementById("som_combo_tipo").value, aCada: Number(document.getElementById("som_combo_aCada").value) || 1 },
+        presente: { ativo: document.getElementById("som_presente_ativo").checked, som: document.getElementById("som_presente_tipo").value, url: document.getElementById("som_presente_url").value },
+        premio: { ativo: document.getElementById("som_premio_ativo").checked, som: document.getElementById("som_premio_tipo").value, url: document.getElementById("som_premio_url").value },
+        seguidor: { ativo: document.getElementById("som_seguidor_ativo").checked, som: document.getElementById("som_seguidor_tipo").value, url: document.getElementById("som_seguidor_url").value },
+        combo: { ativo: document.getElementById("som_combo_ativo").checked, som: document.getElementById("som_combo_tipo").value, url: document.getElementById("som_combo_url").value, aCada: Number(document.getElementById("som_combo_aCada").value) || 1 },
       },
     };
     salvarConfig(novo);
@@ -1114,7 +1144,7 @@ function renderMetas() {
           duracaoMs: 5500,
           animacoesAtivas: cfg.animacoes,
         });
-        if (cfg.sons.premio.ativo) tocarSom(cfg.sons.premio.som, cfg.sons.volume);
+        tocarSomConfig(cfg.sons.premio, cfg.sons.volume);
       }
     });
   }
@@ -1214,7 +1244,7 @@ function renderRanking() {
     if (tipo === "follow") {
       seguidoresConhecidos[userId] = true;
       salvarSeguidores();
-      if (cfg.sons.seguidor.ativo) tocarSom(cfg.sons.seguidor.som, cfg.sons.volume);
+      tocarSomConfig(cfg.sons.seguidor, cfg.sons.volume);
     }
     const conta = !cfg.exigirSeguidor || ehSeguidor(userId, data);
     if (!conta) return;
@@ -1305,7 +1335,7 @@ function renderAlerta() {
     if (valorBase === null) return;
     const valor = valorBase * cfg.valores.presente;
 
-    if (cfg.sons.presente.ativo) tocarSom(cfg.sons.presente.som, cfg.sons.volume);
+    tocarSomConfig(cfg.sons.presente, cfg.sons.volume);
     if (!cfg.alerta.ativo || valor < cfg.alerta.valorMinimo) return;
     const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
     const ehRecorde = valor > recordeAtual;
@@ -1376,7 +1406,7 @@ function renderCombo() {
   document.body.appendChild(root);
   const api = criarNoCombo(root, t, (contagem) => {
     const s = cfg.sons.combo;
-    if (s.ativo && s.aCada > 0 && contagem % s.aCada === 0) tocarSom(s.som, cfg.sons.volume);
+    if (s.ativo && s.aCada > 0 && contagem % s.aCada === 0) tocarSomConfig(s, cfg.sons.volume);
   });
 
   function processarEventoCombo(payload) {

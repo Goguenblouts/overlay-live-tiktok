@@ -244,6 +244,9 @@ const CONFIG_PADRAO = {
   animacoes: true,
   alerta: { ativo: true, valorMinimo: 50, duracaoMs: 5000 },
   combo: { ativo: true, janelaMs: 2500, fontes: ["like", "presente"] },
+  // layout de exibição do overlay de Prêmios da live: "lateral" (card no
+  // canto, padrão), "barra" (faixa inferior) ou "popup" (card grande centralizado)
+  metas: { layout: "lateral" },
   sons: {
     volume: 70,
     presente: { ativo: true, som: "moeda", url: "" },
@@ -274,6 +277,7 @@ function carregarConfig() {
     cfg.valores = Object.assign(structuredClone(CONFIG_PADRAO.valores), salvo.valores || {});
     cfg.alerta = Object.assign(structuredClone(CONFIG_PADRAO.alerta), salvo.alerta || {});
     cfg.combo = Object.assign(structuredClone(CONFIG_PADRAO.combo), salvo.combo || {});
+    cfg.metas = Object.assign(structuredClone(CONFIG_PADRAO.metas), salvo.metas || {});
     cfg.sons = mesclarSons(CONFIG_PADRAO.sons, salvo.sons);
     cfg.animacoes = salvo.animacoes !== undefined ? salvo.animacoes : CONFIG_PADRAO.animacoes;
     return cfg;
@@ -565,6 +569,7 @@ function renderPainel() {
   let apiComboPreview; // recriada em renderPrevias() sempre que o tema muda
 
   const SECOES = [
+    { id: "overlays",   label: "Overlays",    icone: "🧩", cor: "var(--ic-links)" },
     { id: "links",      label: "Links",       icone: "🔗", cor: "var(--ic-links)" },
     { id: "aparencia",  label: "Aparência",    icone: "◐", cor: "var(--ic-aparencia)" },
     { id: "config",     label: "Config",       icone: "⚙", cor: "var(--ic-config)" },
@@ -614,22 +619,108 @@ function renderPainel() {
 
   function criarSecao(id) {
     const sec = document.createElement("div");
-    sec.className = "secao-conteudo" + (id === "links" ? "" : " oculto");
+    sec.className = "secao-conteudo" + (id === "overlays" ? "" : " oculto");
     sec.id = "secao-" + id;
     wrap.appendChild(sec);
     return sec;
   }
 
+  function irParaAba(secaoId, ancoraId) {
+    nav.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("ativo", b.dataset.secao === secaoId));
+    SECOES.forEach(s => document.getElementById("secao-" + s.id).classList.add("oculto"));
+    const alvo = document.getElementById("secao-" + secaoId);
+    alvo.classList.remove("oculto");
+    alvo.classList.remove("secao-conteudo");
+    void alvo.offsetWidth;
+    alvo.classList.add("secao-conteudo");
+    if (ancoraId) {
+      setTimeout(() => {
+        const el = document.getElementById(ancoraId);
+        if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 60);
+    }
+  }
+
   nav.querySelectorAll(".nav-item").forEach(btn => {
+    btn.addEventListener("click", () => irParaAba(btn.dataset.secao));
+  });
+
+  // ============================================================
+  // SEÇÃO: Overlays — a pessoa escolhe o modelo/layout de cada
+  // overlay aqui e cai direto na configuração dele (Config).
+  // ============================================================
+  const secaoOverlaysGaleria = criarSecao("overlays");
+  secaoOverlaysGaleria.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Escolha o modelo/layout de cada overlay e configure os prêmios, alertas e sons dele.</p>`;
+
+  const galeriaWrap = document.createElement("div");
+  galeriaWrap.style.cssText = "display:flex;flex-direction:column;gap:14px;";
+  secaoOverlaysGaleria.appendChild(galeriaWrap);
+
+  const ANCORA_POR_OVERLAY = {
+    metas: "ancoraPremios",
+    ranking: "ancoraRanking",
+    alerta: "ancoraAlerta",
+    combo: "ancoraCombo",
+    vitrine: "ancoraPremios",
+  };
+
+  const LAYOUTS_METAS_INFO = [
+    { id: "lateral", nome: "Lateral", desc: "Card no canto superior esquerdo (padrão)" },
+    { id: "barra", nome: "Barra inferior", desc: "Faixa na parte de baixo da tela" },
+    { id: "popup", nome: "Popup central", desc: "Card grande centralizado, bem chamativo" },
+  ];
+
+  OVERLAYS.forEach(ov => {
+    const cardGaleria = document.createElement("div");
+    cardGaleria.className = "painel-card";
+    cardGaleria.style.cssText = "padding:16px 18px;border-top:3px solid var(--ic-links);";
+
+    let seletorLayoutHtml = "";
+    if (ov.id === "metas") {
+      const layoutAtual = (cfg.metas && cfg.metas.layout) || "lateral";
+      seletorLayoutHtml = `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+          <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Modelo do overlay</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            ${LAYOUTS_METAS_INFO.map(l => `
+              <button data-layout-metas="${l.id}" title="${l.desc}" style="background:${l.id === layoutAtual ? "var(--accent)" : "var(--bg-alt)"};color:${l.id === layoutAtual ? "#fff" : "var(--text)"};border:1px solid ${l.id === layoutAtual ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">${l.nome}</button>
+            `).join("")}
+          </div>
+        </div>
+      `;
+    }
+
+    cardGaleria.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
+        <div style="min-width:0;">
+          <div style="font-size:14px;font-weight:600;margin-bottom:3px;">${ov.nome}</div>
+          <div style="font-size:12px;color:var(--text-dim);">${ov.desc}</div>
+        </div>
+        <button data-configurar="${ov.id}" style="flex-shrink:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">Configurar prêmios/regras →</button>
+      </div>
+      ${seletorLayoutHtml}
+    `;
+    galeriaWrap.appendChild(cardGaleria);
+  });
+
+  galeriaWrap.querySelectorAll("[data-configurar]").forEach(btn => {
     btn.addEventListener("click", () => {
-      nav.querySelectorAll(".nav-item").forEach(b => b.classList.remove("ativo"));
-      btn.classList.add("ativo");
-      SECOES.forEach(s => document.getElementById("secao-" + s.id).classList.add("oculto"));
-      const alvo = document.getElementById("secao-" + btn.dataset.secao);
-      alvo.classList.remove("oculto");
-      alvo.classList.remove("secao-conteudo");
-      void alvo.offsetWidth;
-      alvo.classList.add("secao-conteudo");
+      const ancora = ANCORA_POR_OVERLAY[btn.dataset.configurar];
+      irParaAba("config", ancora);
+    });
+  });
+
+  galeriaWrap.querySelectorAll("[data-layout-metas]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const atual = carregarConfig();
+      atual.metas = { layout: btn.dataset.layoutMetas };
+      salvarConfig(atual);
+      galeriaWrap.querySelectorAll("[data-layout-metas]").forEach(b => {
+        const ativo = b.dataset.layoutMetas === btn.dataset.layoutMetas;
+        b.style.background = ativo ? "var(--accent)" : "var(--bg-alt)";
+        b.style.color = ativo ? "#fff" : "var(--text)";
+        b.style.borderColor = ativo ? "var(--accent)" : "var(--border)";
+      });
     });
   });
 
@@ -645,8 +736,6 @@ function renderPainel() {
   listaWrap.style.cssText = "display:flex;flex-direction:column;gap:16px;";
   secaoLinks.appendChild(listaWrap);
 
-  const cfgCodificado = codificarConfigParaLink(cfg);
-
   function caixaQuadriculada(innerHtml) {
     return `<div style="background:repeating-conic-gradient(var(--bg-alt) 0% 25%, var(--bg) 0% 50%) 0 0/16px 16px;border-radius:8px;padding:20px;">${innerHtml}</div>`;
   }
@@ -655,9 +744,6 @@ function renderPainel() {
 
   OVERLAYS.forEach(ov => {
     const linkBase = location.origin + location.pathname + "?view=" + ov.id;
-    const link = linkBase + "&cfg=" + cfgCodificado;
-    const linkTeste = linkBase + "&sim=1&cfg=" + cfgCodificado;
-    const linkReset = linkBase + "&reset=1&cfg=" + cfgCodificado;
 
     const bloco = document.createElement("div");
     bloco.className = "painel-card";
@@ -672,9 +758,9 @@ function renderPainel() {
         <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${linkBase}</div>
       </div>
       <div style="flex-shrink:0;display:flex;gap:8px;">
-        <button data-link="${linkReset}" title="Abra esse link uma vez (no navegador ou trocando a URL do Browser Source no OBS) pra apagar ranking, prêmios e seguidores salvos — depois volte pro link normal" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Link de reset</button>
-        <button data-link="${linkTeste}" title="Gera eventos falsos automaticamente — não precisa de live nem do TikFinity ligado" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Copiar link de teste</button>
-        <button data-link="${link}" style="background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Copiar link</button>
+        <button data-view="${ov.id}" data-modo="reset" title="Abra esse link uma vez (no navegador ou trocando a URL do Browser Source no OBS) pra apagar ranking, prêmios e seguidores salvos — depois volte pro link normal" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Link de reset</button>
+        <button data-view="${ov.id}" data-modo="teste" title="Gera eventos falsos automaticamente — não precisa de live nem do TikFinity ligado" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:9px 14px;font-size:12px;font-weight:600;cursor:pointer;">Copiar link de teste</button>
+        <button data-view="${ov.id}" data-modo="normal" style="background:var(--accent);color:#ffffff;border:none;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Copiar link</button>
       </div>
     `;
     bloco.appendChild(linkRow);
@@ -707,9 +793,20 @@ function renderPainel() {
     listaWrap.appendChild(bloco);
   });
 
-  listaWrap.querySelectorAll("[data-link]").forEach(btn => {
+  listaWrap.querySelectorAll("[data-view]").forEach(btn => {
     btn.addEventListener("click", () => {
-      copiarTexto(btn.dataset.link);
+      // monta o link com a config MAIS RECENTE do localStorage (não a
+      // capturada quando o painel abriu) — assim, mesmo que você tenha
+      // salvo algo em Config sem recarregar a página, o link copiado
+      // aqui já sai atualizado.
+      const cfgFresco = carregarConfig();
+      const cfgCodificadoFresco = codificarConfigParaLink(cfgFresco);
+      const linkBase = location.origin + location.pathname + "?view=" + btn.dataset.view;
+      let linkFinal = linkBase;
+      if (btn.dataset.modo === "teste") linkFinal += "&sim=1";
+      if (btn.dataset.modo === "reset") linkFinal += "&reset=1";
+      linkFinal += "&cfg=" + cfgCodificadoFresco;
+      copiarTexto(linkFinal);
       const original = btn.textContent;
       btn.textContent = "Copiado ✓";
       setTimeout(() => (btn.textContent = original), 1500);
@@ -896,20 +993,20 @@ function renderPainel() {
         ${campoNumero("vCompartilhar", "Pontos por compartilhar", cfg.valores.compartilhamento)}
       </div>
     </div>
-    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+    <div id="ancoraRanking" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Ranking</div>
       <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
         ${toggleHtml("exigirSeguidor", "Ranking só conta seguidor confirmado", cfg.exigirSeguidor)}
         <div>${campoNumero("tamanhoRanking", "Tamanho do ranking", cfg.tamanhoRanking, "width:120px;")}</div>
       </div>
     </div>
-    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+    <div id="ancoraPremios" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Prêmios (por espectador)</div>
       <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Cada espectador acumula os pontos dele sozinho. Quando ele bate o valor de um tier, ele desbloqueia aquele prêmio — o progresso nunca zera sozinho.</p>
       <div id="listaTiers"></div>
       <button id="addTier" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar tier</button>
     </div>
-    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+    <div id="ancoraAlerta" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Alerta de presente</div>
       <div style="margin-bottom:12px;">${toggleHtml("alertaAtivo", "Ativar overlay de alerta", cfg.alerta.ativo)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -917,7 +1014,7 @@ function renderPainel() {
         ${campoNumero("alertaDuracao", "Tempo na tela (segundos)", Math.round(cfg.alerta.duracaoMs / 1000))}
       </div>
     </div>
-    <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
+    <div id="ancoraCombo" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:14px;font-weight:600;margin-bottom:10px;">Combo / sequência</div>
       <div style="margin-bottom:12px;">${toggleHtml("comboAtivo", "Ativar overlay de combo", cfg.combo.ativo)}</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
@@ -1206,10 +1303,17 @@ function renderMetas() {
   const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
   const premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, tiersGanhos:[] } }
 
+  const LAYOUTS_METAS = {
+    lateral: { css: "position:fixed;top:24px;left:24px;max-width:380px;display:flex;flex-direction:column;gap:10px;", escala: 1 },
+    barra:   { css: "position:fixed;bottom:0;left:0;width:100%;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;padding:22px 0;", escala: 1.1 },
+    popup:   { css: "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;", escala: 1.5 },
+  };
+  const layoutEscolhido = LAYOUTS_METAS[cfg.metas && cfg.metas.layout] || LAYOUTS_METAS.lateral;
+
   const root = document.createElement("div");
-  root.style.cssText = "display:flex;flex-direction:column;gap:10px;max-width:380px;";
+  root.style.cssText = layoutEscolhido.css;
   document.body.appendChild(root);
-  const api = criarFilaDeCards(root);
+  const api = criarFilaDeCards(root, layoutEscolhido.escala);
 
   function obterUsuario(userId, nickname) {
     if (!premios[userId]) {
@@ -1372,7 +1476,8 @@ function renderRanking() {
 // pelo alerta de presente E pelo aviso de prêmio desbloqueado (e pela
 // prévia do painel). cada item: {icone, titulo, subtitulo, destaque,
 // tema, duracaoMs, animacoesAtivas}
-function criarFilaDeCards(container) {
+function criarFilaDeCards(container, escala) {
+  escala = escala || 1;
   const fila = [];
   let mostrando = false;
 
@@ -1381,14 +1486,14 @@ function criarFilaDeCards(container) {
     mostrando = true;
     const { icone, titulo, subtitulo, destaque, tema, duracaoMs, animacoesAtivas, corDestaque, raridade } = fila.shift();
     const corBorda = corDestaque || tema.corPrimaria;
-    const raioCard = Math.max(8, tema.raio);
+    const raioCard = Math.max(8, tema.raio) * escala;
     const cartao = document.createElement("div");
-    cartao.style.cssText = `position:relative;display:flex;align-items:center;gap:12px;padding:14px 18px;border-radius:${raioCard}px;background:${tema.corCard};border:1px solid ${destaque ? corBorda : tema.corBorda};box-shadow:0 10px 30px rgba(0,0,0,.35)${destaque ? `, 0 0 0 1px ${corBorda}55, 0 0 24px ${corBorda}55` : ""};animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
+    cartao.style.cssText = `position:relative;display:flex;align-items:center;gap:${12 * escala}px;padding:${14 * escala}px ${18 * escala}px;border-radius:${raioCard}px;background:${tema.corCard};border:1px solid ${destaque ? corBorda : tema.corBorda};box-shadow:0 10px 30px rgba(0,0,0,.35)${destaque ? `, 0 0 0 1px ${corBorda}55, 0 0 24px ${corBorda}55` : ""};animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
     cartao.innerHTML = `
-      <div style="width:38px;height:38px;flex-shrink:0;border-radius:50%;background:${corBorda};display:flex;align-items:center;justify-content:center;font-size:18px;">${icone}</div>
+      <div style="width:${38 * escala}px;height:${38 * escala}px;flex-shrink:0;border-radius:50%;background:${corBorda};display:flex;align-items:center;justify-content:center;font-size:${18 * escala}px;">${icone}</div>
       <div style="min-width:0;">
-        <div style="font-size:12px;color:${tema.corTextoSec};">${titulo}${raridade ? ` · <span style="color:${corBorda};font-weight:600;">${raridade}</span>` : ""}</div>
-        <div style="font-size:15px;color:${tema.corTexto};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${subtitulo}</div>
+        <div style="font-size:${12 * escala}px;color:${tema.corTextoSec};">${titulo}${raridade ? ` · <span style="color:${corBorda};font-weight:600;">${raridade}</span>` : ""}</div>
+        <div style="font-size:${15 * escala}px;color:${tema.corTexto};font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${subtitulo}</div>
       </div>
     `;
     container.appendChild(cartao);

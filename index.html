@@ -5,6 +5,8 @@
 <title>Central de Overlays - Live TikTok</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 <style>
   :root {
     --bg: #0e0e10;
@@ -44,12 +46,27 @@
     font-family: var(--font-mono);
   }
   .painel-card {
-    background: var(--surface);
+    background: rgba(26, 26, 30, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
     border-radius: 10px;
     transition: border-color 0.15s ease;
   }
   .painel-card:hover { border-color: var(--text-faint); }
+  /* ---- cards de prêmio com gradiente por raridade (estilo item-shop) ---- */
+  .card-raridade {
+    position: relative;
+    overflow: hidden;
+    border-width: 1.5px !important;
+  }
+  .card-raridade::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(135deg, transparent, transparent 10px, rgba(255,255,255,0.025) 10px, rgba(255,255,255,0.025) 20px);
+    pointer-events: none;
+  }
   .signal-bar {
     height: 2px;
     width: 100%;
@@ -391,14 +408,22 @@ const RARIDADES_TIER = [
   { nome: "Raro",     cor: "#4b9eff" },
   { nome: "Épico",    cor: "#b34bff" },
   { nome: "Lendário", cor: "#ff9f2e" },
+  { nome: "Mítico",   cor: "#ffd54b" },
 ];
 function raridadeDoTier(index, total) {
   if (!total || total <= 1) return RARIDADES_TIER[0];
   const posicao = index / (total - 1);
-  if (posicao >= 0.99) return RARIDADES_TIER[3];
-  if (posicao >= 0.6) return RARIDADES_TIER[2];
-  if (posicao >= 0.3) return RARIDADES_TIER[1];
+  if (posicao >= 0.99) return RARIDADES_TIER[4];
+  if (posicao >= 0.75) return RARIDADES_TIER[3];
+  if (posicao >= 0.5) return RARIDADES_TIER[2];
+  if (posicao >= 0.25) return RARIDADES_TIER[1];
   return RARIDADES_TIER[0];
+}
+// gradiente diagonal escuro -> cor da raridade, pro visual "item shop"
+function gradienteRaridade(corHex) {
+  const rgb = hexParaRgb(corHex);
+  if (!rgb) return "";
+  return `linear-gradient(135deg, rgba(${rgb.r},${rgb.g},${rgb.b},0.16) 0%, rgba(20,20,24,0.05) 55%)`;
 }
 function iconeDoTier(nome) {
   const n = (nome || "").toLowerCase();
@@ -625,10 +650,10 @@ function renderPainel() {
   let apiComboPreview; // recriada em renderPrevias() sempre que o tema muda
 
   const SECOES = [
-    { id: "overlays",   label: "Overlays",    icone: "🧩", cor: "var(--ic-links)" },
-    { id: "links",      label: "Links",       icone: "🔗", cor: "var(--ic-links)" },
-    { id: "aparencia",  label: "Aparência",    icone: "◐", cor: "var(--ic-aparencia)" },
-    { id: "config",     label: "Config",       icone: "⚙", cor: "var(--ic-config)" },
+    { id: "overlays",   label: "Overlays",    icone: '<i class="fa-solid fa-layer-group"></i>', cor: "var(--ic-links)" },
+    { id: "links",      label: "Links",       icone: '<i class="fa-solid fa-link"></i>', cor: "var(--ic-links)" },
+    { id: "aparencia",  label: "Aparência",    icone: '<i class="fa-solid fa-wand-magic-sparkles"></i>', cor: "var(--ic-aparencia)" },
+    { id: "config",     label: "Config",       icone: '<i class="fa-solid fa-sliders"></i>', cor: "var(--ic-config)" },
   ];
 
   const shell = document.createElement("div");
@@ -706,7 +731,24 @@ function renderPainel() {
   // overlay aqui e cai direto na configuração dele (Config).
   // ============================================================
   const secaoOverlaysGaleria = criarSecao("overlays");
-  secaoOverlaysGaleria.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Escolha o modelo/layout de cada overlay e configure os prêmios, alertas e sons dele.</p>`;
+  secaoOverlaysGaleria.innerHTML = `
+    <h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Overlays</h2>
+    <p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Escolha o modelo/layout de cada overlay e configure os prêmios, alertas e sons dele.</p>
+    <div class="painel-card" style="display:flex;flex-wrap:wrap;gap:18px;padding:16px 18px;margin-bottom:18px;">
+      <div style="flex:1;min-width:150px;display:flex;gap:10px;align-items:flex-start;">
+        <i class="fa-solid fa-plug-circle-bolt" style="color:var(--ic-links);font-size:15px;margin-top:2px;"></i>
+        <div><div style="font-size:12.5px;font-weight:600;">1. Configure</div><div style="font-size:11.5px;color:var(--text-dim);">Prêmios, pontos e sons em Config.</div></div>
+      </div>
+      <div style="flex:1;min-width:150px;display:flex;gap:10px;align-items:flex-start;">
+        <i class="fa-solid fa-copy" style="color:var(--ic-previa);font-size:15px;margin-top:2px;"></i>
+        <div><div style="font-size:12.5px;font-weight:600;">2. Copie o link</div><div style="font-size:11.5px;color:var(--text-dim);">Cole como Browser Source no OBS.</div></div>
+      </div>
+      <div style="flex:1;min-width:150px;display:flex;gap:10px;align-items:flex-start;">
+        <i class="fa-solid fa-tower-broadcast" style="color:var(--ic-config);font-size:15px;margin-top:2px;"></i>
+        <div><div style="font-size:12.5px;font-weight:600;">3. Vá ao ar</div><div style="font-size:11.5px;color:var(--text-dim);">Conecta no TikFinity sozinho.</div></div>
+      </div>
+    </div>
+  `;
 
   const galeriaWrap = document.createElement("div");
   galeriaWrap.style.cssText = "display:flex;flex-direction:column;gap:14px;";
@@ -1162,8 +1204,11 @@ function renderPainel() {
 
   function renderListaTiers() {
     const el = document.getElementById("listaTiers");
-    el.innerHTML = tiersEditando.map((t, i) => `
-      <div style="background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:8px;">
+    el.innerHTML = tiersEditando.map((t, i) => {
+      const raridade = raridadeDoTier(i, tiersEditando.length);
+      return `
+      <div style="background:var(--bg-alt);border:1px solid var(--border);border-left:3px solid ${raridade.cor};border-radius:8px;padding:12px;margin-bottom:8px;">
+        <div style="font-size:10.5px;font-weight:700;color:${raridade.cor};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">${iconeDoTier(t.nome)} ${raridade.nome}</div>
         <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;">
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">prêmio</label>
             <input data-i="${i}" data-campo="nome" type="text" value="${t.nome}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
@@ -1179,7 +1224,8 @@ function renderPainel() {
           `).join("")}
         </div>
       </div>
-    `).join("");
+    `;
+    }).join("");
 
     el.querySelectorAll("input[data-campo], select[data-campo]").forEach(input => {
       input.addEventListener("input", () => {
@@ -1326,7 +1372,20 @@ function conectarTikFinity(cfg, tag, aoReceber) {
    localStorage até o streamer resetar manualmente pelo painel
    (Config > Zona de risco).
    ============================================================ */
+function dispararConfeteCanvas(container, cor) {
+  if (typeof window.confetti !== "function") return;
+  try {
+    const rect = container.getBoundingClientRect();
+    const origin = {
+      x: (rect.left + rect.width / 2) / window.innerWidth,
+      y: (rect.top + rect.height / 2) / window.innerHeight,
+    };
+    window.confetti({ particleCount: 60, spread: 65, startVelocity: 32, origin, colors: [cor, "#ffffff"], disableForReducedMotion: true });
+  } catch (e) { /* biblioteca indisponível (ex: sem internet) — segue só com o efeito local */ }
+}
+
 function dispararConfete(container, cor) {
+  dispararConfeteCanvas(container, cor);
   const camada = document.createElement("div");
   camada.style.cssText = "position:absolute;left:50%;top:40%;width:0;height:0;pointer-events:none;";
   for (let i = 0; i < 12; i++) {
@@ -1543,8 +1602,12 @@ function criarFilaDeCards(container, escala) {
     const { icone, titulo, subtitulo, destaque, tema, duracaoMs, animacoesAtivas, corDestaque, raridade } = fila.shift();
     const corBorda = corDestaque || tema.corPrimaria;
     const raioCard = Math.max(8, tema.raio) * escala;
+    const fundoCard = raridade
+      ? `${gradienteRaridade(corBorda)}, ${tema.corCard}`
+      : tema.corCard;
     const cartao = document.createElement("div");
-    cartao.style.cssText = `position:relative;display:flex;align-items:center;gap:${12 * escala}px;padding:${14 * escala}px ${18 * escala}px;border-radius:${raioCard}px;background:${tema.corCard};border:1px solid ${destaque ? corBorda : tema.corBorda};box-shadow:0 10px 30px rgba(0,0,0,.35)${destaque ? `, 0 0 0 1px ${corBorda}55, 0 0 24px ${corBorda}55` : ""};animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
+    cartao.className = raridade ? "card-raridade" : "";
+    cartao.style.cssText = `position:relative;display:flex;align-items:center;gap:${12 * escala}px;padding:${14 * escala}px ${18 * escala}px;border-radius:${raioCard}px;background:${fundoCard};border:1.5px solid ${destaque ? corBorda : (raridade ? corBorda + "88" : tema.corBorda)};box-shadow:0 10px 30px rgba(0,0,0,.35)${destaque ? `, 0 0 0 1px ${corBorda}55, 0 0 24px ${corBorda}55` : ""};animation:slideInTop 0.35s cubic-bezier(.22,1,.36,1) both;`;
     cartao.innerHTML = `
       <div style="width:${38 * escala}px;height:${38 * escala}px;flex-shrink:0;border-radius:50%;background:${corBorda};display:flex;align-items:center;justify-content:center;font-size:${18 * escala}px;">${icone}</div>
       <div style="min-width:0;">

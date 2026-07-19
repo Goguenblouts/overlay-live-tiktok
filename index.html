@@ -85,71 +85,94 @@
   }
   .signal-bar { display: none; }
   .topbar {
-    height: 48px;
+    height: 64px;
     background: linear-gradient(90deg, var(--grad-start), var(--grad-end));
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 0 18px;
+    gap: 12px;
+    padding: 0 28px;
     flex-shrink: 0;
   }
   .topbar-logo {
-    width: 24px; height: 24px; border-radius: 6px;
+    width: 34px; height: 34px; border-radius: 10px;
     background: rgba(255,255,255,0.22);
     display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 700; color: #fff;
+    font-size: 14px; font-weight: 700; color: #fff;
   }
-  .topbar-title { color: #fff; font-weight: 700; font-size: 14px; letter-spacing: -0.01em; }
+  .topbar-title { color: #fff; font-weight: 700; font-size: 17px; letter-spacing: -0.01em; }
+  .topbar-sub { color: rgba(255,255,255,0.75); font-size: 11.5px; font-weight: 500; letter-spacing: 0.02em; text-transform: uppercase; }
   .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
-  .painel-layout { display: flex; flex: 1; min-height: 0; }
+  .painel-layout { display: flex; flex: 1; min-height: 0; justify-content: center; }
   .painel-sidebar {
-    width: 76px;
+    width: 250px;
     flex-shrink: 0;
     background: var(--bg-alt);
     border-right: 1px solid var(--border);
-    padding: 14px 8px;
+    padding: 24px 16px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 4px;
+    gap: 5px;
   }
-  .painel-main { flex: 1; min-width: 0; padding: 30px 36px 72px; max-width: 800px; }
+  .painel-main { flex: 1; min-width: 0; padding: 44px 48px 88px; max-width: 1180px; }
   .nav-item {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: 12px;
     width: 100%;
     background: transparent;
     border: none;
-    border-radius: 9px;
-    padding: 9px 4px;
+    border-radius: 10px;
+    padding: 11px 12px;
     cursor: pointer;
     font-family: var(--font-display);
+    text-align: left;
   }
   .nav-item:hover { background: var(--surface-hover); transform: none; }
-  .nav-item.ativo { background: var(--surface); }
+  .nav-item.ativo { background: var(--surface); box-shadow: inset 0 0 0 1px var(--border); }
   .nav-icon {
-    width: 30px; height: 30px; border-radius: 8px;
+    width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     color: #fff; font-size: 14px; font-weight: 700;
-    opacity: 0.55;
+    opacity: 0.6;
     transition: opacity 0.15s ease;
   }
   .nav-item.ativo .nav-icon { opacity: 1; }
-  .nav-label { font-size: 9.5px; color: var(--text-faint); text-align: center; line-height: 1.2; }
+  .nav-label { font-size: 13.5px; font-weight: 600; color: var(--text-dim); }
   .nav-item.ativo .nav-label { color: var(--text); }
+  .sidebar-info {
+    margin-top: auto;
+    background: rgba(240,70,75,0.08);
+    border: 1px solid rgba(240,70,75,0.22);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+  }
+  .sidebar-info b { color: var(--text); display: flex; align-items: center; gap: 6px; margin-bottom: 5px; font-size: 12px; }
+  .btn-cta {
+    background: linear-gradient(90deg, var(--grad-start), var(--grad-end));
+    color: #fff !important;
+    border: none !important;
+    font-weight: 700;
+    box-shadow: 0 6px 18px rgba(124,34,200,0.28);
+  }
+  .btn-cta:hover { filter: brightness(1.08); }
   .oculto { display: none !important; }
-  @media (max-width: 720px) {
+  @media (max-width: 900px) {
     .painel-layout { flex-direction: column; }
     .painel-sidebar {
       width: 100%;
       flex-direction: row;
       overflow-x: auto;
       padding: 10px;
+      gap: 4px;
     }
-    .nav-item { width: auto; flex-shrink: 0; padding: 6px 10px; }
-    .painel-main { padding: 24px 18px 56px; }
+    .sidebar-info { display: none; }
+    .nav-item { width: auto; flex-shrink: 0; padding: 8px 12px; }
+    .nav-label { font-size: 12px; }
+    .painel-main { padding: 28px 20px 56px; }
   }
 
   /* ---- switch (toggle) ---- */
@@ -663,8 +686,11 @@ function renderPainel() {
   // -------- topbar --------
   shell.innerHTML = `
     <div class="topbar">
-      <div class="topbar-logo">TS</div>
-      <div class="topbar-title">TTK Studio</div>
+      <div class="topbar-logo"><i class="fa-solid fa-gamepad"></i></div>
+      <div>
+        <div class="topbar-title">Central de Overlays</div>
+        <div class="topbar-sub">Gamificação gratuita pra live do TikTok</div>
+      </div>
     </div>
   `;
 
@@ -672,7 +698,7 @@ function renderPainel() {
   layout.className = "painel-layout";
   shell.appendChild(layout);
 
-  // -------- sidebar (trilha de ícones) --------
+  // -------- sidebar --------
   const sidebar = document.createElement("div");
   sidebar.className = "painel-sidebar";
   layout.appendChild(sidebar);
@@ -684,6 +710,10 @@ function renderPainel() {
     btn.innerHTML = `<span class="nav-icon" style="background:${s.cor};">${s.icone}</span><span class="nav-label">${s.label}</span>`;
     sidebar.appendChild(btn);
   });
+  const infoBox = document.createElement("div");
+  infoBox.className = "sidebar-info";
+  infoBox.innerHTML = `<b><i class="fa-solid fa-bolt"></i> Sincronia instantânea</b>Salva aqui, atualiza sozinho em todo overlay já aberto no OBS — sem recopiar link.`;
+  sidebar.appendChild(infoBox);
   const nav = sidebar;
 
   // -------- área principal --------
@@ -692,9 +722,9 @@ function renderPainel() {
   layout.appendChild(wrap);
 
   wrap.innerHTML = `
-    <div style="padding-bottom:22px;">
-      <h1 style="font-size:26px;font-weight:700;margin:0 0 8px;letter-spacing:-0.01em;">Overlays da live</h1>
-      <p style="font-size:14px;color:var(--text-dim);margin:0 0 4px;max-width:540px;line-height:1.5;">Copie o link de cada overlay pro TikTok Studio ou OBS, ajuste a aparência e as regras de pontuação — tudo fica salvo neste navegador.</p>
+    <div style="padding-bottom:30px;">
+      <h1 style="font-size:32px;font-weight:700;margin:0 0 10px;letter-spacing:-0.015em;">Overlays da live</h1>
+      <p style="font-size:15px;color:var(--text-dim);margin:0;max-width:600px;line-height:1.6;">Copie o link de cada overlay pro TikTok Studio ou OBS, ajuste a aparência e as regras de pontuação — tudo fica salvo neste navegador e sincronizado na nuvem.</p>
     </div>
   `;
 
@@ -732,7 +762,7 @@ function renderPainel() {
   // ============================================================
   const secaoOverlaysGaleria = criarSecao("overlays");
   secaoOverlaysGaleria.innerHTML = `
-    <h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Overlays</h2>
+    <h2 style="font-size:23px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;">Overlays</h2>
     <p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Escolha o modelo/layout de cada overlay e configure os prêmios, alertas e sons dele.</p>
     <div class="painel-card" style="display:flex;flex-wrap:wrap;gap:18px;padding:16px 18px;margin-bottom:18px;">
       <div style="flex:1;min-width:150px;display:flex;gap:10px;align-items:flex-start;">
@@ -751,7 +781,7 @@ function renderPainel() {
   `;
 
   const galeriaWrap = document.createElement("div");
-  galeriaWrap.style.cssText = "display:flex;flex-direction:column;gap:14px;";
+  galeriaWrap.style.cssText = "display:grid;grid-template-columns:repeat(auto-fill, minmax(300px, 1fr));gap:16px;align-items:start;";
   secaoOverlaysGaleria.appendChild(galeriaWrap);
 
   const ANCORA_POR_OVERLAY = {
@@ -771,13 +801,13 @@ function renderPainel() {
   OVERLAYS.forEach(ov => {
     const cardGaleria = document.createElement("div");
     cardGaleria.className = "painel-card";
-    cardGaleria.style.cssText = "padding:16px 18px;border-top:3px solid var(--ic-links);";
+    cardGaleria.style.cssText = "padding:20px 22px;border-top:3px solid var(--ic-links);display:flex;flex-direction:column;gap:14px;height:100%;";
 
     let seletorLayoutHtml = "";
     if (ov.id === "metas") {
       const layoutAtual = (cfg.metas && cfg.metas.layout) || "lateral";
       seletorLayoutHtml = `
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="padding-top:12px;border-top:1px solid var(--border);">
           <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Modelo do overlay</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;">
             ${LAYOUTS_METAS_INFO.map(l => `
@@ -789,14 +819,12 @@ function renderPainel() {
     }
 
     cardGaleria.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;">
-        <div style="min-width:0;">
-          <div style="font-size:14px;font-weight:600;margin-bottom:3px;">${ov.nome}</div>
-          <div style="font-size:12px;color:var(--text-dim);">${ov.desc}</div>
-        </div>
-        <button data-configurar="${ov.id}" style="flex-shrink:0;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;">Configurar prêmios/regras →</button>
+      <div style="flex:1;">
+        <div style="font-size:16px;font-weight:700;margin-bottom:5px;">${ov.nome}</div>
+        <div style="font-size:12.5px;color:var(--text-dim);line-height:1.5;">${ov.desc}</div>
       </div>
       ${seletorLayoutHtml}
+      <button data-configurar="${ov.id}" class="btn-cta" style="border-radius:8px;padding:10px 14px;font-size:12.5px;cursor:pointer;width:100%;">Configurar prêmios/regras →</button>
     `;
     galeriaWrap.appendChild(cardGaleria);
   });
@@ -828,7 +856,7 @@ function renderPainel() {
   // precisar ficar trocando de aba pra conferir a aparência.
   // ============================================================
   const secaoLinks = criarSecao("links");
-  secaoLinks.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity. Se testou com o link de teste dentro do OBS, os dados falsos ficam salvos ali — use "Link de reset" uma vez pra limpar antes de ir ao vivo de verdade. <strong>Importante:</strong> o OBS roda um navegador separado do seu — toda vez que você mudar algo em Config e salvar, copie os links de novo aqui e cole no OBS, senão o overlay lá continua com as configurações antigas.</p>`;
+  secaoLinks.innerHTML = `<h2 style="font-size:23px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;">Links dos overlays</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Um Browser Source por overlay. Use o "link de teste" pra testar no OBS/TikTok Studio sem precisar estar ao vivo — ele gera eventos falsos sozinho, sem depender do TikFinity. Se testou com o link de teste dentro do OBS, os dados falsos ficam salvos ali — use "Link de reset" uma vez pra limpar antes de ir ao vivo de verdade. <strong>Importante:</strong> o OBS roda um navegador separado do seu — toda vez que você mudar algo em Config e salvar, copie os links de novo aqui e cole no OBS, senão o overlay lá continua com as configurações antigas.</p>`;
 
   const listaWrap = document.createElement("div");
   listaWrap.style.cssText = "display:flex;flex-direction:column;gap:16px;";
@@ -1001,7 +1029,7 @@ function renderPainel() {
   // SEÇÃO: Aparência
   // ============================================================
   const secaoAparencia = criarSecao("aparencia");
-  secaoAparencia.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Aparência</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Cores, fonte, arredondamento e animações dos overlays.</p>`;
+  secaoAparencia.innerHTML = `<h2 style="font-size:23px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;">Aparência</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Cores, fonte, arredondamento e animações dos overlays.</p>`;
 
   const temaBox = document.createElement("div");
   temaBox.className = "painel-card";
@@ -1068,7 +1096,7 @@ function renderPainel() {
   // SEÇÃO: Configurações
   // ============================================================
   const secaoConfig = criarSecao("config");
-  secaoConfig.innerHTML = `<h2 style="font-size:19px;font-weight:600;margin:0 0 4px;letter-spacing:-0.005em;">Configurações</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Pontos por ação, prêmios que cada espectador desbloqueia, alerta de presente, combo e sons.</p>`;
+  secaoConfig.innerHTML = `<h2 style="font-size:23px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;">Configurações</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Pontos por ação, prêmios que cada espectador desbloqueia, alerta de presente, combo e sons.</p>`;
 
   const form = document.createElement("div");
   form.className = "painel-card";

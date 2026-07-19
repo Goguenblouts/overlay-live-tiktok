@@ -170,7 +170,39 @@
 </style>
 </head>
 <body>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
+/* ============================================================
+   SYNC AUTOMÁTICO (Firebase Realtime Database)
+   - Guarda a configuração geral num banco na nuvem, além do
+     localStorage de cada navegador.
+   - Toda vez que o painel salva, manda a config pra nuvem.
+   - Toda vez que qualquer overlay (ou o próprio painel) abre,
+     ele escuta essa mesma chave. Se a nuvem tiver algo diferente
+     do que já está salvo localmente, atualiza e recarrega a
+     página sozinho — sem precisar copiar link de novo.
+   - Se der qualquer problema pra conectar (sem internet, etc),
+     tudo continua funcionando do jeito antigo, só que sem o
+     sync automático entre telas.
+   ============================================================ */
+const firebaseConfig = {
+  apiKey: "AIzaSyAZkrdcciHLXsV01nNwpvsz7MbvTQPB8uA",
+  authDomain: "meus-links-c0839.firebaseapp.com",
+  databaseURL: "https://meus-links-c0839-default-rtdb.firebaseio.com",
+  projectId: "meus-links-c0839",
+  storageBucket: "meus-links-c0839.firebasestorage.app",
+  messagingSenderId: "751984968027",
+  appId: "1:751984968027:web:8b870195b9ce89ad3dda7e",
+};
+let dbRefConfig = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  dbRefConfig = firebase.database().ref("overlay_tiktok/config");
+} catch (e) {
+  console.warn("[firebase] não consegui iniciar o sync automático:", e);
+}
+
 /* ============================================================
    CENTRAL DE OVERLAYS
    - sem parâmetro na URL: mostra o painel (lista + config + tema)
@@ -287,6 +319,9 @@ function carregarConfig() {
 }
 function salvarConfig(cfg) {
   localStorage.setItem("configGeral", JSON.stringify(cfg));
+  if (dbRefConfig) {
+    dbRefConfig.set(cfg).catch(e => console.warn("[firebase] falha ao salvar na nuvem:", e));
+  }
 }
 
 // Codifica/decodifica a config inteira pra poder viajar dentro da própria
@@ -538,6 +573,27 @@ if (params.get("reset") === "1") {
   localStorage.removeItem("rankingUsuarios");
   localStorage.removeItem("premiosPorUsuario");
   localStorage.removeItem("seguidoresConhecidos");
+}
+
+// Escuta a nuvem em toda página (painel e overlays). Se a config de lá
+// for diferente da que está salva aqui, atualiza e recarrega sozinho —
+// é isso que faz a aparência mudar no overlay ao vivo sem copiar link.
+if (dbRefConfig) {
+  dbRefConfig.on("value", snap => {
+    const remoto = snap.val();
+    const localAtual = localStorage.getItem("configGeral");
+    if (remoto) {
+      const remotoStr = JSON.stringify(remoto);
+      if (localAtual !== remotoStr) {
+        localStorage.setItem("configGeral", remotoStr);
+        location.reload();
+      }
+    } else if (localAtual) {
+      // nuvem ainda vazia (primeira vez usando o sync): manda o que já
+      // existe aqui pra servir de ponto de partida.
+      dbRefConfig.set(JSON.parse(localAtual)).catch(() => {});
+    }
+  }, e => console.warn("[firebase] falha ao escutar mudanças:", e));
 }
 
 if (!view) {

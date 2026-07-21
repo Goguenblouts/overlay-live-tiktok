@@ -753,7 +753,19 @@ function carregarConfig() {
 function salvarConfig(cfg) {
   localStorage.setItem("configGeral", JSON.stringify(cfg));
   if (dbRefConfig) {
-    dbRefConfig.set(cfg).catch(e => console.warn("[firebase] falha ao salvar na nuvem:", e));
+    // O Firebase Realtime Database rejeita o set() inteiro (com um erro
+    // síncrono, nem chega a virar rejeição de promise) se achar UM campo
+    // "undefined" em qualquer lugar aninhado do objeto — coisa fácil de
+    // acontecer com regra/passo ainda sendo editados. Isso fazia a config
+    // nova nunca chegar na nuvem (silenciosamente), e os prêmios/ajustes
+    // novos não apareciam no overlay ao vivo. O round-trip por JSON limpa
+    // qualquer "undefined" antes de mandar, sem alterar o resto dos dados.
+    try {
+      const cfgLimpo = JSON.parse(JSON.stringify(cfg));
+      dbRefConfig.set(cfgLimpo).catch(e => console.warn("[firebase] falha ao salvar na nuvem:", e));
+    } catch (e) {
+      console.warn("[firebase] falha ao salvar na nuvem:", e);
+    }
   }
 }
 // Tema efetivo de um overlay: o tema global (Aparência) com a sobrescrita
@@ -1094,13 +1106,23 @@ if (params.get("cfg")) {
 // Firebase Realtime Database não preserva a ordem original (e pode até
 // omitir objetos/arrays vazios), então comparar JSON.stringify puro dava
 // falso positivo de "mudou" e recarregava sem necessidade.
+// Além de ordenar as chaves, também desfaz uma ambiguidade clássica do
+// Firebase Realtime Database: um array salvo pode voltar como OBJETO com
+// chaves "0","1","2"... em vez de array de verdade. Sem isso, a comparação
+// achava "diferença" toda vez (mesmo com os dados idênticos) e o overlay
+// ficava recarregando sem parar (o "piscando" que não atualiza nada de novo).
+function normalizarParaComparacao(v) {
+  if (Array.isArray(v)) return v.map(normalizarParaComparacao);
+  if (v && typeof v === "object") {
+    const chaves = Object.keys(v);
+    const pareceArray = chaves.length > 0 && chaves.every((k, i) => k === String(i));
+    if (pareceArray) return chaves.map(k => normalizarParaComparacao(v[k]));
+    return chaves.sort().reduce((acc, k) => { acc[k] = normalizarParaComparacao(v[k]); return acc; }, {});
+  }
+  return v;
+}
 function jsonEstavel(valor) {
-  return JSON.stringify(valor, (chave, v) => {
-    if (v && typeof v === "object" && !Array.isArray(v)) {
-      return Object.keys(v).sort().reduce((acc, k) => { acc[k] = v[k]; return acc; }, {});
-    }
-    return v;
-  });
+  return JSON.stringify(normalizarParaComparacao(valor));
 }
 
 // Escuta a nuvem SÓ nos overlays de verdade (não no painel — o painel já
@@ -1118,7 +1140,18 @@ if (dbRefConfig && !modoPreview && view) {
       const localEstavel = localAtual ? jsonEstavel(JSON.parse(localAtual)) : null;
       if (localEstavel !== remotoEstavel) {
         localStorage.setItem("configGeral", JSON.stringify(remoto));
-        location.reload();
+        // Trava de segurança: se esse mecanismo já recarregou a página há
+        // pouco tempo, não recarrega de novo agora — só grava os dados
+        // novos. Evita loop de reload (a tela "piscando" sem parar) caso
+        // sobre alguma diferença residual entre o formato local e o da
+        // nuvem; os dados corretos já foram salvos acima de qualquer jeito,
+        // e a próxima navegação/reload de verdade já pega tudo atualizado.
+        const agora = Date.now();
+        const ultimaRecarga = Number(sessionStorage.getItem("ultimaRecargaConfigNuvem") || 0);
+        if (agora - ultimaRecarga > 4000) {
+          sessionStorage.setItem("ultimaRecargaConfigNuvem", String(agora));
+          location.reload();
+        }
       }
     } else if (localAtual) {
       // nuvem ainda vazia (primeira vez usando o sync): manda o que já

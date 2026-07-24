@@ -355,16 +355,10 @@ const firebaseConfig = {
 };
 let dbRefConfig = null;
 let dbRefReset = null;
-let dbRefResetLive = null;
 try {
   firebase.initializeApp(firebaseConfig);
   dbRefConfig = firebase.database().ref("overlay_tiktok/config");
   dbRefReset = firebase.database().ref("overlay_tiktok/resetTrigger");
-  // sinal separado do reset geral: só zera o balde "da live" (pontos de
-  // mensagem/like/seguidor/compartilhamento + ranking), preserva
-  // presenteMensal e os prêmios de escopo "mensal" — usado pelo botão
-  // "Iniciar nova live" em Config > Zona de risco.
-  dbRefResetLive = firebase.database().ref("overlay_tiktok/resetLiveTrigger");
 } catch (e) {
   console.warn("[firebase] não consegui iniciar o sync automático:", e);
 }
@@ -417,29 +411,39 @@ const CONFIG_PADRAO = {
     mensagem: 1,
     likeACada: 100,
     likeValor: 5,
-    presente: 1,
+    // pontos de presente: por FAIXA de tamanho (parecido com os pacotes
+    // de moeda que o próprio TikTok vende) — presente pequeno vale menos
+    // por diamante, presente grande vale mais por diamante, pra quem
+    // manda um presente caro sentir a diferença de verdade no placar.
+    // "ate" é o teto de diamantes daquela faixa (null = sem teto, pega
+    // tudo que sobrar); "pontos" é quantos pontos vale CADA diamante
+    // dentro da faixa. presenteMinimo é um piso por presente, pra um
+    // presente bem baratinho não valer 0. Ver pontosDoPresente() mais
+    // abaixo no arquivo.
+    faixasPresente: [
+      { ate: 20, pontos: 10 },
+      { ate: 100, pontos: 15 },
+      { ate: 300, pontos: 20 },
+      { ate: null, pontos: 25 },
+    ],
+    presenteMinimo: 10,
     seguidor: 3,
     compartilhamento: 5,
   },
   exigirSeguidor: true,
   tamanhoRanking: 5,
-  // pontos de presente (gift) são dinheiro de verdade — sempre acumulam
-  // no balde "mensal" (zera só na virada do mês, nunca perde entre
-  // lives). Os outros tipos de evento (mensagem/like/seguidor/
-  // compartilhamento) acumulam no balde "da live" (zera a cada live
-  // nova). Por isso todo tier tem um escopo: "live" ou "mensal" — um
-  // tier "mensal" só pode somar a fonte "presente"; um tier "live" nunca
-  // pode usar "presente" como fonte (ver checarResetAutomaticoLive/Mensal
-  // mais abaixo no arquivo).
-  resetLive: { horasParaAutoReset: 4 },
+  // TODOS os pontos (mensagem/like/presente/seguidor/compartilhamento)
+  // acumulam o mês inteiro sem perder nada — só zeram na virada do mês
+  // (calendário) ou se a pessoa resetar manualmente em Config > Zona de
+  // risco. Não existe mais reset automático por live parada.
   // cada tier é um prêmio que O ESPECTADOR ganha quando os pontos DELE
-  // (somando só as fontes listadas) baterem o valor — não é uma meta
-  // coletiva da live.
+  // (somando as fontes escolhidas — pode misturar presente com
+  // mensagem/like/seguidor/compartilhamento à vontade) baterem o valor.
   tiers: [
-    { id: "baixo",  nome: "Jam track",       pontos: 315,  fontes: ["mensagem", "like", "compartilhamento"], escopo: "live" },
-    { id: "medio1", nome: "Emote",            pontos: 785,  fontes: ["presente"], escopo: "mensal" },
-    { id: "medio2", nome: "Battle pass",       pontos: 1375, fontes: ["presente"], escopo: "mensal" },
-    { id: "epico",  nome: "Bundle de skin",    pontos: 3410, fontes: ["presente"], escopo: "mensal" },
+    { id: "baixo",  nome: "Jam track",       pontos: 315,  fontes: ["mensagem", "like", "compartilhamento"] },
+    { id: "medio1", nome: "Emote",            pontos: 785,  fontes: ["presente"] },
+    { id: "medio2", nome: "Battle pass",       pontos: 1375, fontes: ["presente"] },
+    { id: "epico",  nome: "Bundle de skin",    pontos: 3410, fontes: ["presente"] },
   ],
   tema: {
     corPrimaria: "#1D9E75",
@@ -549,35 +553,34 @@ const MANUAIS = [
     resumo: "Cada espectador junta pontos e desbloqueia prêmios conforme interage com a sua live.",
     secoes: [
       { h: "O que é" },
-      { p: "Cada espectador acumula pontos por conta própria — mandando mensagem, curtindo, mandando presente, seguindo ou compartilhando — e desbloqueia prêmios (chamados de \"tiers\") conforme os pontos dele batem os valores configurados. Quando alguém desbloqueia um prêmio, aparece um card avisando na tela." },
-      { h: "Dois tipos de prêmio" },
-      { li: [
-        "Prêmio \"da live\": soma pontos de mensagem, like, seguidor e compartilhamento. Zera sozinho a cada live nova.",
-        "Prêmio \"do mês\": soma só pontos de presente (dinheiro de verdade). Nunca perde entre uma live e outra — só zera na virada do mês, garantindo que quem gastou não perca o progresso.",
-      ] },
+      { p: "Cada espectador acumula pontos por conta própria — mandando mensagem, curtindo, mandando presente, seguindo ou compartilhando — e desbloqueia prêmios (chamados de \"tiers\") conforme os pontos dele batem os valores configurados. Quando alguém desbloqueia um prêmio, aparece um card avisando na tela. Todo ponto acumula o mês inteiro, sem resetar entre uma live e outra." },
+      { h: "Escolhendo o que vale pra cada prêmio" },
+      { p: "Cada prêmio tem sua própria lista de fontes (mensagem, like, presente, seguidor, compartilhamento) — marque quantas quiser, inclusive misturando presente com engajamento no mesmo prêmio. Os pontos de todas as fontes marcadas somam juntos pra aquele prêmio." },
+      { h: "Pontos de presente" },
+      { p: "Cada presente vale o valor dele (em diamante/moeda) vezes \"pontos por diamante\", com um piso mínimo (\"mínimo por presente\") — assim um presente baratinho ainda soma alguma coisa, e um presente caro não deixa os outros pontos irrelevantes. Ajuste os dois números em Config > Pontuação por ação." },
       { h: "Como criar ou editar um prêmio" },
-      { p: "Vá em Overlays, clique em Config no card \"Prêmios da live\", e mexa na lista de prêmios: nome, quantos pontos precisa pra ganhar, ícone, e o escopo (da live ou do mês). Quando o escopo é \"do mês\", a fonte já fica travada em presente automaticamente." },
+      { p: "Vá em Overlays, clique em Config no card \"Prêmios da live\", e mexa na lista de prêmios: nome, quantos pontos precisa pra ganhar, ícone, e as fontes que somam pra ele." },
       { h: "Modelo visual" },
       { p: "Escolha entre três layouts: lateral (card no canto, o padrão), barra (faixa na parte de baixo da tela) ou popup (card grande centralizado)." },
-      { h: "Resetando os pontos da live" },
-      { p: "O reset acontece sozinho quando passa um tempo (padrão 4 horas) sem nenhum evento chegar — sinal de que a live anterior acabou. Se quiser forçar o reset na hora, use o botão \"Iniciar nova live agora\" em Config > Zona de risco. Isso não mexe nos pontos de presente do mês." },
+      { h: "Resetando os pontos" },
+      { p: "Os pontos zeram sozinhos só na virada do mês (calendário). Se quiser começar do zero antes disso, use \"Zerar pontos de todos os espectadores\" em Config > Zona de risco — isso apaga tudo, sem volta." },
     ],
   },
   {
     id: "ranking",
-    titulo: "Ranking (Top seguidores da live)",
+    titulo: "Ranking (Top seguidores do mês)",
     icone: "fa-solid fa-ranking-star",
     cor: "var(--ic-links)",
-    resumo: "Mostra o top de espectadores mais ativos na live atual, atualizando sozinho.",
+    resumo: "Mostra o top de espectadores mais ativos no mês, atualizando sozinho.",
     secoes: [
       { h: "O que é" },
-      { p: "Uma lista com os espectadores que mais pontuaram na live atual, ordenada do maior pro menor, atualizando em tempo real conforme os eventos chegam." },
+      { p: "Uma lista com os espectadores que mais pontuaram no mês atual, ordenada do maior pro menor, atualizando em tempo real conforme os eventos chegam. Usa a mesma pontuação configurada em Prêmios da live." },
       { h: "Exigir seguidor" },
       { p: "Em Config, você pode ligar a opção \"exigir seguidor\": só espectadores que já seguem (ou acabaram de seguir) você entram na contagem do ranking." },
       { h: "Tamanho do ranking" },
       { p: "Defina quantos espectadores aparecem na lista (top 5 é o padrão)." },
       { h: "Reset" },
-      { p: "Por já ser \"da live\" por definição, o ranking zera junto com o resto do balde da live — automático por tempo parado, ou na hora com o botão \"Iniciar nova live agora\" em Config > Zona de risco." },
+      { p: "O ranking acumula o mês inteiro e zera sozinho só na virada do mês — ou na hora, se você usar \"Zerar pontos de todos os espectadores\" em Config > Zona de risco." },
     ],
   },
   {
@@ -685,10 +688,8 @@ const MANUAIS = [
     secoes: [
       { h: "Conexão" },
       { p: "Cole aqui o endereço WebSocket que o TikFinity mostra na tela dele — é isso que faz os overlays receberem em tempo real os eventos da sua live (mensagens, likes, presentes, seguidores, compartilhamentos)." },
-      { h: "Nova live" },
-      { p: "Zera os pontos de mensagem/like/seguidor/compartilhamento (e o ranking) de todos os espectadores — usado toda vez que você quiser forçar o início de uma nova live sem esperar o reset automático. Os pontos de presente do mês não são afetados." },
       { h: "Zona de risco" },
-      { p: "O botão \"Zerar pontos de todos os espectadores\" apaga TUDO — inclusive os pontos de presente acumulados no mês. Use só se quiser mesmo começar do zero (por exemplo, numa nova temporada)." },
+      { p: "Todos os pontos (mensagem, like, presente, seguidor, compartilhamento) acumulam sozinhos o mês inteiro, sem precisar de nada aqui — só zeram na virada do mês. O botão \"Zerar pontos de todos os espectadores\" apaga TUDO antes disso, sem volta. Use só se quiser mesmo começar do zero (por exemplo, numa nova temporada)." },
     ],
   },
   {
@@ -728,14 +729,11 @@ function carregarConfig() {
     cfg.alerta = Object.assign(structuredClone(CONFIG_PADRAO.alerta), salvo.alerta || {});
     cfg.combo = Object.assign(structuredClone(CONFIG_PADRAO.combo), salvo.combo || {});
     cfg.metas = Object.assign(structuredClone(CONFIG_PADRAO.metas), salvo.metas || {});
-    cfg.resetLive = Object.assign(structuredClone(CONFIG_PADRAO.resetLive), salvo.resetLive || {});
-    // migração: tiers salvos antes do escopo live/mensal existir não têm
-    // esse campo — classifica sozinho pela fonte (presente = mensal,
-    // resto = live) pra não quebrar prêmios já configurados.
-    cfg.tiers = (cfg.tiers || []).map(t => {
-      if (t.escopo === "live" || t.escopo === "mensal") return t;
-      return Object.assign({}, t, { escopo: (t.fontes || []).includes("presente") ? "mensal" : "live" });
-    });
+    // tiers salvos com o campo "escopo" antigo (de quando existia balde
+    // "da live" separado do "do mês") continuam funcionando normalmente —
+    // o campo só fica sem uso, não precisa de migração: fontes já diz
+    // tudo que aquele tier soma.
+    cfg.tiers = cfg.tiers || [];
     cfg.sons = mesclarSons(CONFIG_PADRAO.sons, salvo.sons);
     cfg.animacoes = salvo.animacoes !== undefined ? salvo.animacoes : CONFIG_PADRAO.animacoes;
     cfg.overlayTema = Object.assign(structuredClone(CONFIG_PADRAO.overlayTema), salvo.overlayTema || {});
@@ -1184,32 +1182,6 @@ if (dbRefReset && !modoPreview && view) {
       location.reload();
     }
   }, e => console.warn("[firebase] falha ao escutar reset:", e));
-}
-
-// Reset remoto SÓ do balde "da live": quando a pessoa clica em "Iniciar
-// nova live" no painel (Config > Zona de risco), zera pontos de
-// mensagem/like/seguidor/compartilhamento + ranking em todo overlay já
-// aberto no OBS, sem tocar em presenteMensal nem nos prêmios de escopo
-// "mensal" (isso é o que garante que ninguém perde o progresso pago
-// entre uma live e outra). resetarBucketDaLive() é a mesma função usada
-// pela detecção automática por tempo parado (perto de carregarPremios).
-let resetLivePrimeiroSnapshot = true;
-if (dbRefResetLive && !modoPreview && view) {
-  dbRefResetLive.on("value", snap => {
-    const remoto = snap.val();
-    if (resetLivePrimeiroSnapshot) {
-      resetLivePrimeiroSnapshot = false;
-      if (remoto) localStorage.setItem("ultimoResetLiveAplicado", String(remoto));
-      return;
-    }
-    if (!remoto) return;
-    const localMarca = localStorage.getItem("ultimoResetLiveAplicado");
-    if (String(remoto) !== localMarca) {
-      localStorage.setItem("ultimoResetLiveAplicado", String(remoto));
-      resetarBucketDaLive();
-      location.reload();
-    }
-  }, e => console.warn("[firebase] falha ao escutar reset da live:", e));
 }
 
 // ------------------------------------------------------------
@@ -3408,12 +3380,8 @@ function renderPainel() {
           ${campoTexto("wsUrl", "Endereço da conexão (WebSocket)", cfg.tikfinityWsUrl)}
         </div>
         <div class="config-subpage oculto" data-subpage="zona">
-          <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Nova live</div>
-          <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Os pontos de mensagem/like/seguidor/compartilhamento (e o ranking) já zeram sozinhos quando passa um tempo sem nenhum evento chegar — sinal de que a live acabou. Se quiser forçar o reset na hora (por exemplo, terminou a live mais cedo e já vai gravar outra depois), use o botão abaixo. Os pontos de presente (que valem pro mês) não são afetados.</p>
-          <button id="iniciarNovaLive" style="background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Iniciar nova live agora</button>
-
-          <div style="font-size:14px;font-weight:600;margin:22px 0 8px;color:#e0637a;">Zona de risco</div>
-          <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Isso apaga TUDO, inclusive os pontos de presente do mês. Se quiser começar do zero (nova temporada, por exemplo), use o botão abaixo.</p>
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Zona de risco</div>
+          <p style="font-size:12px;color:var(--text-dim);margin:0 0 10px;">Todos os pontos (mensagem/like/presente/seguidor/compartilhamento) acumulam o mês inteiro sozinhos, sem precisar de nada aqui — só zeram na virada do mês. Se quiser começar do zero antes disso (nova temporada, por exemplo), use o botão abaixo. Isso apaga TUDO, sem volta.</p>
           <button id="resetarEspectadores" style="background:transparent;color:#e0637a;border:1px solid #e0637a55;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;">Zerar pontos de todos os espectadores</button>
         </div>
       </div>
@@ -3467,18 +3435,6 @@ function renderPainel() {
     }
   }
 
-  document.getElementById("iniciarNovaLive").addEventListener("click", () => {
-    const ok = confirm("Isso zera os pontos de mensagem/like/seguidor/compartilhamento e o ranking de todos os espectadores — inclusive nos overlays já abertos no OBS. Os pontos de presente (do mês) ficam intactos. Continuar?");
-    if (!ok) return;
-    resetarBucketDaLive();
-    if (dbRefResetLive) {
-      const agora = Date.now();
-      localStorage.setItem(chaveEspectadores("ultimoResetLiveAplicado"), String(agora));
-      dbRefResetLive.set(agora).catch(e => console.warn("[firebase] falha ao propagar reset da live:", e));
-    }
-    alert("Pronto — pontos da live zerados, inclusive nos overlays já abertos no OBS. Os pontos de presente do mês continuam intactos.");
-  });
-
   document.getElementById("resetarEspectadores").addEventListener("click", () => {
     const ok = confirm("Isso apaga o progresso de TODOS os espectadores (ranking e prêmios) — inclusive nos overlays que já estiverem abertos no OBS. Essa ação não pode ser desfeita. Continuar?");
     if (!ok) return;
@@ -3503,20 +3459,64 @@ function renderPainel() {
   }
 
   let tiersEditando = structuredClone(cfg.tiers);
+  let faixasPresenteEditando = structuredClone(cfg.valores.faixasPresente || CONFIG_PADRAO.valores.faixasPresente);
 
-  // fontes que um tier "da live" pode usar (tudo, menos presente — que
-  // é sempre do balde mensal) e o rótulo do escopo de cada prêmio.
-  const fontesDaLive = fontesDisponiveis.filter(f => f !== "presente");
-  const ESCOPOS_TIER = [
-    { id: "live", nome: "Da live (zera a cada live nova)" },
-    { id: "mensal", nome: "Do mês (só presente, nunca perde)" },
-  ];
+  // Editor de faixas de presente: usado pelos modais de "metas" e
+  // "ranking" (compartilham a mesma pontuação). Cada faixa vale por
+  // presente sozinho — um presente de 500 diamantes usa a faixa que
+  // contém 500, não soma pedaço por pedaço de faixas diferentes.
+  function renderFaixasPresente() {
+    const el = document.getElementById("listaFaixasPresente");
+    if (!el) return;
+    el.innerHTML = faixasPresenteEditando.map((f, i) => {
+      const ultima = i === faixasPresenteEditando.length - 1;
+      return `
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;align-items:end;margin-bottom:6px;">
+        <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">até quantos diamantes</label>
+          ${ultima
+            ? `<input type="text" value="sem teto" disabled style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text-faint);border-radius:6px;padding:7px;font-size:12px;"/>`
+            : `<input data-i="${i}" data-campo-faixa="ate" type="number" value="${f.ate}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/>`}
+        </div>
+        <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">pontos por diamante</label>
+          <input data-i="${i}" data-campo-faixa="pontos" type="number" value="${f.pontos}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+        ${faixasPresenteEditando.length > 1 ? `<button data-remove-faixa="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>` : `<div></div>`}
+      </div>
+    `;
+    }).join("");
+
+    el.querySelectorAll("input[data-campo-faixa]").forEach(input => {
+      input.addEventListener("input", () => {
+        const i = Number(input.dataset.i);
+        const campo = input.dataset.campoFaixa;
+        faixasPresenteEditando[i][campo] = Number(input.value);
+      });
+    });
+    el.querySelectorAll("button[data-remove-faixa]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        faixasPresenteEditando.splice(Number(btn.dataset.removeFaixa), 1);
+        renderFaixasPresente();
+      });
+    });
+  }
+
+  function montarEditorFaixasPresente() {
+    renderFaixasPresente();
+    const btnAdd = document.getElementById("addFaixaPresente");
+    if (btnAdd) {
+      btnAdd.addEventListener("click", () => {
+        // nova faixa entra antes da última (a última fica sempre "sem teto")
+        const penultima = faixasPresenteEditando[faixasPresenteEditando.length - 2];
+        const tetoAnterior = penultima ? penultima.ate : 0;
+        faixasPresenteEditando.splice(faixasPresenteEditando.length - 1, 0, { ate: tetoAnterior + 50, pontos: 10 });
+        renderFaixasPresente();
+      });
+    }
+  }
 
   function renderListaTiers() {
     const el = document.getElementById("listaTiers");
     el.innerHTML = tiersEditando.map((t, i) => {
       const raridade = raridadeDoTier(i, tiersEditando.length);
-      const mensal = t.escopo === "mensal";
       return `
       <div style="background:var(--bg-alt);border:1px solid var(--border);border-left:3px solid ${raridade.cor};border-radius:8px;padding:12px;margin-bottom:8px;">
         <div style="font-size:10.5px;font-weight:700;color:${raridade.cor};text-transform:uppercase;letter-spacing:0.05em;margin-bottom:8px;">${iconeTierHtml(t)} ${raridade.nome}</div>
@@ -3533,19 +3533,15 @@ function renderPainel() {
           <button data-remove="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
         </div>
         <div style="margin-top:10px;">
-          <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">escopo</label>
-          <select data-i="${i}" data-campo-escopo="escopo" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;">
-            ${ESCOPOS_TIER.map(e => `<option value="${e.id}" ${t.escopo === e.id ? "selected" : ""}>${e.nome}</option>`).join("")}
-          </select>
-        </div>
-        <div style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;">
-          ${mensal
-            ? `<p style="font-size:11px;color:var(--text-faint);margin:0;">Prêmio mensal — soma automaticamente os pontos de presente do mês, não precisa escolher fonte.</p>`
-            : fontesDaLive.map(f => `
+          <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">soma pontos de:</label>
+          <div style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;">
+            ${fontesDisponiveis.map(f => `
               <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">
                 <input type="checkbox" data-i="${i}" data-fonte="${f}" ${t.fontes.includes(f) ? "checked" : ""}/> ${f}
               </label>
             `).join("")}
+          </div>
+          <p style="font-size:10.5px;color:var(--text-faint);margin:6px 0 0;">Pode misturar à vontade — inclusive presente com engajamento no mesmo prêmio. Todo ponto acumula o mês inteiro, sem resetar entre lives.</p>
         </div>
       </div>
     `;
@@ -3556,16 +3552,6 @@ function renderPainel() {
         const i = Number(input.dataset.i);
         const campo = input.dataset.campo;
         tiersEditando[i][campo] = campo === "pontos" ? Number(input.value) : input.value;
-      });
-    });
-    el.querySelectorAll("select[data-campo-escopo]").forEach(sel => {
-      sel.addEventListener("change", () => {
-        const i = Number(sel.dataset.i);
-        tiersEditando[i].escopo = sel.value;
-        // um tier mensal só soma presente; um tier da live nunca pode usar
-        // presente (isso é o que a checagem de reset assume em todo lugar).
-        tiersEditando[i].fontes = sel.value === "mensal" ? ["presente"] : ["mensagem"];
-        renderListaTiers();
       });
     });
     el.querySelectorAll("input[data-fonte]").forEach(cb => {
@@ -3591,7 +3577,7 @@ function renderPainel() {
   function montarEditorTiers() {
     renderListaTiers();
     document.getElementById("addTier").addEventListener("click", () => {
-      tiersEditando.push({ id: "tier" + Date.now(), nome: "novo prêmio", pontos: 500, fontes: ["mensagem"], escopo: "live", icone: "" });
+      tiersEditando.push({ id: "tier" + Date.now(), nome: "novo prêmio", pontos: 500, fontes: ["mensagem"], icone: "" });
       renderListaTiers();
     });
   }
@@ -3644,14 +3630,18 @@ function renderPainel() {
         </div>
         <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Pontuação por ação</div>
         <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 8px;">Vale pra Prêmios e pro Ranking (os dois usam a mesma pontuação).</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           ${campoNumero("vMensagem", "Pontos por mensagem", cfgAtual.valores.mensagem)}
           ${campoNumero("vLikeACada", "A cada X likes", cfgAtual.valores.likeACada)}
           ${campoNumero("vLikeValor", "...vale quantos pontos", cfgAtual.valores.likeValor)}
-          ${campoNumero("vPresente", "Pontos por diamante", cfgAtual.valores.presente)}
           ${campoNumero("vSeguidor", "Pontos por novo seguidor", cfgAtual.valores.seguidor)}
           ${campoNumero("vCompartilhar", "Pontos por compartilhar", cfgAtual.valores.compartilhamento)}
+          ${campoNumero("vPresenteMinimo", "Mínimo por presente", cfgAtual.valores.presenteMinimo)}
         </div>
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:2px;">Faixas de presente</div>
+        <p style="font-size:11px;color:var(--text-dim);margin:0 0 8px;">Cada presente vale pelo tamanho dele (em diamantes) — presentes maiores caem numa faixa que vale mais pontos por diamante, igual os pacotes de moeda que o TikTok vende.</p>
+        <div id="listaFaixasPresente"></div>
+        <button id="addFaixaPresente" style="margin-top:2px;margin-bottom:16px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar faixa</button>
         <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Prêmios (tiers)</div>
         <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 8px;">Cada espectador acumula pontos sozinho; ao bater o valor de um tier, desbloqueia aquele prêmio.</p>
         <div id="listaTiers"></div>
@@ -3670,14 +3660,18 @@ function renderPainel() {
         </div>
         <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Pontuação por ação</div>
         <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 8px;">Vale pra Ranking e pra Prêmios (os dois usam a mesma pontuação).</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
           ${campoNumero("vMensagem", "Pontos por mensagem", cfgAtual.valores.mensagem)}
           ${campoNumero("vLikeACada", "A cada X likes", cfgAtual.valores.likeACada)}
           ${campoNumero("vLikeValor", "...vale quantos pontos", cfgAtual.valores.likeValor)}
-          ${campoNumero("vPresente", "Pontos por diamante", cfgAtual.valores.presente)}
           ${campoNumero("vSeguidor", "Pontos por novo seguidor", cfgAtual.valores.seguidor)}
           ${campoNumero("vCompartilhar", "Pontos por compartilhar", cfgAtual.valores.compartilhamento)}
+          ${campoNumero("vPresenteMinimo", "Mínimo por presente", cfgAtual.valores.presenteMinimo)}
         </div>
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:2px;">Faixas de presente</div>
+        <p style="font-size:11px;color:var(--text-dim);margin:0 0 8px;">Cada presente vale pelo tamanho dele (em diamantes) — presentes maiores caem numa faixa que vale mais pontos por diamante.</p>
+        <div id="listaFaixasPresente"></div>
+        <button id="addFaixaPresente" style="margin-top:2px;margin-bottom:16px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar faixa</button>
         <div style="font-size:13px;font-weight:600;margin:16px 0 4px;">Som</div>
         ${linhaSom("seguidor", "Novo seguidor", cfgAtual.sons.seguidor)}
         ${campoVolumeModal(cfgAtual)}
@@ -3746,7 +3740,8 @@ function renderPainel() {
       mensagem: Number(document.getElementById("vMensagem").value),
       likeACada: Number(document.getElementById("vLikeACada").value),
       likeValor: Number(document.getElementById("vLikeValor").value),
-      presente: Number(document.getElementById("vPresente").value),
+      faixasPresente: faixasPresenteEditando,
+      presenteMinimo: Number(document.getElementById("vPresenteMinimo").value),
       seguidor: Number(document.getElementById("vSeguidor").value),
       compartilhamento: Number(document.getElementById("vCompartilhar").value),
     });
@@ -3846,6 +3841,10 @@ function renderPainel() {
     if (overlayId === "metas" || overlayId === "vitrine") {
       tiersEditando = structuredClone(cfgAtual.tiers);
       montarEditorTiers();
+    }
+    if (overlayId === "metas" || overlayId === "ranking") {
+      faixasPresenteEditando = structuredClone(cfgAtual.valores.faixasPresente || CONFIG_PADRAO.valores.faixasPresente);
+      montarEditorFaixasPresente();
     }
     if (overlayId === "metas") wireSomRow(backdrop, "premio", "somVolumeModal");
     if (overlayId === "ranking") wireSomRow(backdrop, "seguidor", "somVolumeModal");
@@ -4003,11 +4002,12 @@ function conectarTikFinity(cfg, tag, aoReceber) {
 /* ============================================================
    OVERLAY: METAS — prêmios por espectador
    Cada espectador acumula pontos por conta própria (chat, likes,
-   presentes, seguir, compartilhar). Quando OS PONTOS DELE batem um
-   tier, ele desbloqueia aquele prêmio e aparece um card aqui
-   avisando. Isso nunca zera sozinho — fica salvo pra sempre no
-   localStorage até o streamer resetar manualmente pelo painel
-   (Config > Zona de risco).
+   presentes, seguir, compartilhar) — todas as fontes ficam disponíveis
+   pra qualquer prêmio, dá pra misturar à vontade. Quando OS PONTOS DELE
+   batem um tier, ele desbloqueia aquele prêmio e aparece um card aqui
+   avisando. Os pontos acumulam o mês inteiro sem perder nada — só
+   zeram na virada do mês (automático) ou se o streamer resetar
+   manualmente pelo painel (Config > Zona de risco).
    ============================================================ */
 function dispararConfeteCanvas(container, cor) {
   if (typeof window.confetti !== "function") return;
@@ -4074,51 +4074,31 @@ function salvarPremios(obj) {
 }
 
 // ------------------------------------------------------------
-// Reset "da live": pontos de mensagem/like/seguidor/compartilhamento
-// (e o ranking, que já se chama "Top seguidores da live") zeram
-// automaticamente quando passa um tempo sem nenhum evento chegar
-// (padrão 4h, ajustável em cfg.resetLive.horasParaAutoReset) — sinal de
-// que a live anterior acabou e outra está começando. NÃO mexe em
-// presenteMensal nem nos tiersGanhos de escopo "mensal": presente é
-// dinheiro de verdade, não pode sumir entre uma live e outra.
+// Pontos de presente: cada presente cai numa faixa (pelo tamanho dele
+// em diamantes) e vale "pontos por diamante" DAQUELA faixa vezes o
+// tamanho — não é progressivo/acumulado, cada presente é avaliado
+// sozinho pelo próprio tamanho. Sempre com um piso mínimo por presente
+// (cfg.valores.presenteMinimo), pra presente bem baratinho não valer
+// quase nada. Usado em Prêmios, Ranking e Alerta de presente — os três
+// mostram o mesmo valor em pontos.
 // ------------------------------------------------------------
-function chaveUltimaAtividadeLive() { return chaveEspectadores("ultimaAtividadeLive"); }
-
-function resetarBucketDaLive() {
-  const cfgAtual = carregarConfig();
-  const premiosAtual = carregarPremios();
-  const idsLive = new Set((cfgAtual.tiers || []).filter(t => t.escopo !== "mensal").map(t => t.id));
-  Object.values(premiosAtual).forEach(u => {
-    if (u.fontes) Object.keys(u.fontes).forEach(f => { u.fontes[f] = 0; });
-    u.tiersGanhos = (u.tiersGanhos || []).filter(id => !idsLive.has(id));
-  });
-  salvarPremios(premiosAtual);
-  localStorage.removeItem(chaveEspectadores("rankingUsuarios"));
-}
-
-// chamar sempre que um evento chegar (e uma vez ao carregar o overlay).
-// Retorna true se acabou de resetar por ter ficado tempo parado demais —
-// quem chamar deve recarregar a própria página pra ressincronizar o
-// estado em memória com o que acabou de ser zerado no localStorage.
-function checarResetAutomaticoLive(cfg) {
-  const horas = (cfg.resetLive && cfg.resetLive.horasParaAutoReset) || 4;
-  const limiteMs = horas * 60 * 60 * 1000;
-  const agora = Date.now();
-  const ultima = Number(localStorage.getItem(chaveUltimaAtividadeLive()) || 0);
-  let resetou = false;
-  if (ultima && (agora - ultima) > limiteMs) {
-    resetarBucketDaLive();
-    resetou = true;
-  }
-  localStorage.setItem(chaveUltimaAtividadeLive(), String(agora));
-  return resetou;
+function pontosDoPresente(valorBase, cfg) {
+  const v = cfg.valores;
+  const diamantes = Number(valorBase) || 0;
+  const faixas = (v.faixasPresente && v.faixasPresente.length) ? v.faixasPresente : CONFIG_PADRAO.valores.faixasPresente;
+  const faixa = faixas.find(f => f.ate == null || diamantes <= f.ate) || faixas[faixas.length - 1];
+  const proporcional = diamantes * (faixa ? Number(faixa.pontos) || 0 : 0);
+  const minimo = v.presenteMinimo != null ? v.presenteMinimo : 10;
+  return Math.max(minimo, proporcional);
 }
 
 // ------------------------------------------------------------
-// Reset "do mês": presenteMensal (e os tiersGanhos de escopo "mensal")
-// zeram sozinhos quando o mês do calendário muda — cada overlay detecta
-// isso comparando com o próprio relógio, sem precisar de sinal do
-// Firebase (o mês vira igual em qualquer lugar do mundo no mesmo dia).
+// Reset "do mês": TODOS os pontos (mensagem/like/presente/seguidor/
+// compartilhamento) zeram sozinhos quando o mês do calendário muda —
+// cada overlay detecta isso comparando com o próprio relógio, sem
+// precisar de sinal do Firebase (o mês vira igual em qualquer lugar do
+// mundo no mesmo dia). Fora disso, nada reseta sozinho: os pontos
+// acumulam a live inteira e o mês inteiro sem perder nada.
 // ------------------------------------------------------------
 function chaveMesReferencia() { return chaveEspectadores("mesReferenciaMensal"); }
 
@@ -4127,14 +4107,13 @@ function checarResetAutomaticoMensal() {
   const mesSalvo = localStorage.getItem(chaveMesReferencia());
   let resetou = false;
   if (mesSalvo && mesSalvo !== mesAtual) {
-    const cfgAtual = carregarConfig();
     const premiosAtual = carregarPremios();
-    const idsMensal = new Set((cfgAtual.tiers || []).filter(t => t.escopo === "mensal").map(t => t.id));
     Object.values(premiosAtual).forEach(u => {
-      u.presenteMensal = 0;
-      u.tiersGanhos = (u.tiersGanhos || []).filter(id => !idsMensal.has(id));
+      if (u.fontes) Object.keys(u.fontes).forEach(f => { u.fontes[f] = 0; });
+      u.tiersGanhos = [];
     });
     salvarPremios(premiosAtual);
+    localStorage.removeItem(chaveEspectadores("rankingUsuarios"));
     resetou = true;
   }
   localStorage.setItem(chaveMesReferencia(), mesAtual);
@@ -4147,13 +4126,12 @@ function renderMetas() {
   const fonteCss = carregarFonteGoogle(t.fonte);
   document.body.style.fontFamily = fonteCss;
 
-  // roda os dois antes de ler os prêmios do localStorage, pra já
-  // carregar os dados frescos (zerados, se for o caso) daqui pra baixo.
-  checarResetAutomaticoLive(cfg);
+  // roda antes de ler os prêmios do localStorage, pra já carregar os
+  // dados frescos (zerados, se acabou de virar o mês) daqui pra baixo.
   checarResetAutomaticoMensal();
 
-  const fontesPossiveis = ["mensagem", "like", "seguidor", "compartilhamento"];
-  const premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, presenteMensal, tiersGanhos:[] } }
+  const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
+  const premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, tiersGanhos:[] } }
 
   const LAYOUTS_METAS = {
     lateral: { css: "position:fixed;top:24px;left:24px;max-width:380px;display:flex;flex-direction:column;gap:10px;", escala: 1 },
@@ -4169,17 +4147,18 @@ function renderMetas() {
 
   function obterUsuario(userId, nickname) {
     if (!premios[userId]) {
-      premios[userId] = { nickname, fontes: Object.fromEntries(fontesPossiveis.map(f => [f, 0])), presenteMensal: 0, tiersGanhos: [] };
+      premios[userId] = { nickname, fontes: Object.fromEntries(fontesPossiveis.map(f => [f, 0])), tiersGanhos: [] };
     }
     const u = premios[userId];
-    // migração: quem já tinha pontos de presente acumulados no modelo
-    // antigo (uma fonte só, nunca resetava) não pode perder isso — migra
-    // pra presenteMensal uma vez só, na primeira vez que essa versão rodar.
-    if (u.fontes && typeof u.fontes.presente === "number") {
-      u.presenteMensal = (u.presenteMensal || 0) + u.fontes.presente;
-      delete u.fontes.presente;
+    if (!u.fontes) u.fontes = {};
+    // migração: quem tinha pontos de presente guardados separado em
+    // "presenteMensal" (modelo antigo, antes de tudo virar um balde só)
+    // não pode perder isso — soma dentro de fontes.presente uma vez só.
+    if (typeof u.presenteMensal === "number") {
+      u.fontes.presente = (u.fontes.presente || 0) + u.presenteMensal;
+      delete u.presenteMensal;
     }
-    if (typeof u.presenteMensal !== "number") u.presenteMensal = 0;
+    fontesPossiveis.forEach(f => { if (typeof u.fontes[f] !== "number") u.fontes[f] = 0; });
     if (nickname) u.nickname = nickname;
     return u;
   }
@@ -4188,9 +4167,7 @@ function renderMetas() {
     const u = premios[userId];
     cfg.tiers.forEach((tier, index) => {
       if (u.tiersGanhos.includes(tier.id)) return;
-      const soma = tier.escopo === "mensal"
-        ? (u.presenteMensal || 0)
-        : (tier.fontes || []).reduce((s, f) => s + (u.fontes[f] || 0), 0);
+      const soma = (tier.fontes || []).reduce((s, f) => s + (u.fontes[f] || 0), 0);
       if (soma >= tier.pontos) {
         u.tiersGanhos.push(tier.id);
         const raridade = raridadeDoTier(index, cfg.tiers.length);
@@ -4212,7 +4189,7 @@ function renderMetas() {
 
   function processarEventoMetas(payload) {
     console.log("[overlay-metas] evento:", payload);
-    if (checarResetAutomaticoLive(cfg) || checarResetAutomaticoMensal()) { location.reload(); return; }
+    if (checarResetAutomaticoMensal()) { location.reload(); return; }
     const tipo = payload.event;
     const data = payload.data || {};
     const v = cfg.valores;
@@ -4223,7 +4200,7 @@ function renderMetas() {
 
     if (tipo === "gift") {
       const valorBase = extrairValorPresente(data);
-      if (valorBase !== null) u.presenteMensal += valorBase * v.presente;
+      if (valorBase !== null) u.fontes.presente += pontosDoPresente(valorBase, cfg);
     }
     if (tipo === "chat" || tipo === "comment") u.fontes.mensagem += v.mensagem;
     if (tipo === "like") {
@@ -4254,10 +4231,8 @@ function renderRanking() {
   const fonteCss = carregarFonteGoogle(t.fonte);
   document.body.style.fontFamily = fonteCss;
 
-  // "Top seguidores da live" já é por definição um ranking da live atual
-  // — reseta junto com o resto do balde "da live" (ver checarResetAutomaticoLive
-  // mais acima no arquivo, definido perto de carregarPremios/salvarPremios).
-  checarResetAutomaticoLive(cfg);
+  // "Top seguidores do mês" acumula o mês inteiro, sem resetar entre
+  // lives — só zera na virada do mês (ver checarResetAutomaticoMensal).
   checarResetAutomaticoMensal();
 
   let ranking = JSON.parse(localStorage.getItem(chaveEspectadores("rankingUsuarios")) || "{}");
@@ -4286,7 +4261,7 @@ function renderRanking() {
   const root = document.createElement("div");
   root.style.cssText = `background:${t.corFundo};border-radius:${t.raio}px;padding:18px 22px;max-width:320px;font-family:${fonteCss};`;
   document.body.appendChild(root);
-  root.innerHTML = `<div style="font-size:12px;color:${t.corTextoSec};margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Top seguidores da live</div><div id="lista"></div>`;
+  root.innerHTML = `<div style="font-size:12px;color:${t.corTextoSec};margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">Top seguidores do mês</div><div id="lista"></div>`;
 
   let ultimoTop = [];
   function render() {
@@ -4304,7 +4279,7 @@ function renderRanking() {
 
   function processarEventoRanking(payload) {
     console.log("[overlay-ranking] evento:", payload);
-    if (checarResetAutomaticoLive(cfg) || checarResetAutomaticoMensal()) { location.reload(); return; }
+    if (checarResetAutomaticoMensal()) { location.reload(); return; }
     const tipo = payload.event;
     const data = payload.data || {};
     const v = cfg.valores;
@@ -4320,7 +4295,7 @@ function renderRanking() {
     if (!conta) return;
     if (tipo === "gift") {
       const valorBase = extrairValorPresente(data);
-      if (valorBase !== null) somar(userId, nickname, valorBase * v.presente);
+      if (valorBase !== null) somar(userId, nickname, pontosDoPresente(valorBase, cfg));
     }
     if (tipo === "chat" || tipo === "comment") somar(userId, nickname, v.mensagem);
     if (tipo === "like") {
@@ -4694,7 +4669,7 @@ function renderAlerta() {
     const data = payload.data || {};
     const valorBase = extrairValorPresente(data);
     if (valorBase === null) return;
-    const valor = valorBase * cfg.valores.presente;
+    const valor = pontosDoPresente(valorBase, cfg);
 
     tocarSomConfig(cfg.sons.presente, cfg.sons.volume);
     if (!cfg.alerta.ativo || valor < cfg.alerta.valorMinimo) return;

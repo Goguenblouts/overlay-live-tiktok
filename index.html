@@ -355,10 +355,18 @@ const firebaseConfig = {
 };
 let dbRefConfig = null;
 let dbRefReset = null;
+// prêmios/ranking (pontos dos espectadores) também sincronizam pela nuvem —
+// sem isso, cada tela (painel no seu PC vs overlay dentro do OBS) é um
+// navegador separado com seu próprio localStorage, então os pontos "somem"
+// toda vez que abre uma live nova numa tela que não tinha os dados salvos.
+let dbRefPremios = null;
+let dbRefRanking = null;
 try {
   firebase.initializeApp(firebaseConfig);
   dbRefConfig = firebase.database().ref("overlay_tiktok/config");
   dbRefReset = firebase.database().ref("overlay_tiktok/resetTrigger");
+  dbRefPremios = firebase.database().ref("overlay_tiktok/premios");
+  dbRefRanking = firebase.database().ref("overlay_tiktok/ranking");
 } catch (e) {
   console.warn("[firebase] não consegui iniciar o sync automático:", e);
 }
@@ -553,17 +561,19 @@ const MANUAIS = [
     resumo: "Cada espectador junta pontos e desbloqueia prêmios conforme interage com a sua live.",
     secoes: [
       { h: "O que é" },
-      { p: "Cada espectador acumula pontos por conta própria — mandando mensagem, curtindo, mandando presente, seguindo ou compartilhando — e desbloqueia prêmios (chamados de \"tiers\") conforme os pontos dele batem os valores configurados. Quando alguém desbloqueia um prêmio, aparece um card avisando na tela. Todo ponto acumula o mês inteiro, sem resetar entre uma live e outra." },
+      { p: "Cada espectador acumula pontos por conta própria — mandando mensagem, curtindo, mandando presente, seguindo, compartilhando ou recebendo pontos na mão de você — e desbloqueia prêmios (chamados de \"tiers\") conforme os pontos dele batem os valores configurados. Quando alguém desbloqueia um prêmio, aparece um card avisando na tela. Todo ponto acumula o mês inteiro, sem resetar entre uma live e outra." },
       { h: "Escolhendo o que vale pra cada prêmio" },
-      { p: "Cada prêmio tem sua própria lista de fontes (mensagem, like, presente, seguidor, compartilhamento) — marque quantas quiser, inclusive misturando presente com engajamento no mesmo prêmio. Os pontos de todas as fontes marcadas somam juntos pra aquele prêmio." },
+      { p: "Cada prêmio tem sua própria lista de fontes (mensagem, like, presente, seguidor, compartilhamento, manual) — marque quantas quiser, inclusive misturando presente com engajamento (ou pontos manuais) no mesmo prêmio. Os pontos de todas as fontes marcadas somam juntos pra aquele prêmio." },
       { h: "Pontos de presente" },
-      { p: "Cada presente vale o valor dele (em diamante/moeda) vezes \"pontos por diamante\", com um piso mínimo (\"mínimo por presente\") — assim um presente baratinho ainda soma alguma coisa, e um presente caro não deixa os outros pontos irrelevantes. Ajuste os dois números em Config > Pontuação por ação." },
+      { p: "Cada presente vale pelo tamanho dele em diamantes: quanto maior o presente, maior a faixa em que ele cai, e cada faixa tem seu próprio \"pontos por diamante\" — presentes grandes valem proporcionalmente mais, não é só uma conta fixa. Tem também um piso mínimo (\"mínimo por presente\"), pra presente baratinho ainda somar alguma coisa. Ajuste as faixas e o piso em Config > Pontuação por ação (ou na aba de Config do próprio overlay)." },
+      { h: "Pontos manuais" },
+      { p: "Em Config > Pontos manuais dá pra somar (ou tirar, com número negativo) pontos na mão de um espectador pelo nome — cai na fonte \"manual\", que você escolhe se cada prêmio conta ou não. Funciona mesmo com o overlay já aberto no OBS, atualiza sozinho." },
       { h: "Como criar ou editar um prêmio" },
       { p: "Vá em Overlays, clique em Config no card \"Prêmios da live\", e mexa na lista de prêmios: nome, quantos pontos precisa pra ganhar, ícone, e as fontes que somam pra ele." },
       { h: "Modelo visual" },
       { p: "Escolha entre três layouts: lateral (card no canto, o padrão), barra (faixa na parte de baixo da tela) ou popup (card grande centralizado)." },
       { h: "Resetando os pontos" },
-      { p: "Os pontos zeram sozinhos só na virada do mês (calendário). Se quiser começar do zero antes disso, use \"Zerar pontos de todos os espectadores\" em Config > Zona de risco — isso apaga tudo, sem volta." },
+      { p: "Os pontos zeram sozinhos só na virada do mês (calendário). Se quiser começar do zero antes disso, use \"Zerar pontos de todos os espectadores\" em Config > Zona de risco — isso apaga tudo, sem volta. Os pontos também ficam salvos na nuvem, então não somem se você abrir o overlay num PC diferente ou o OBS limpar o cache." },
     ],
   },
   {
@@ -574,13 +584,13 @@ const MANUAIS = [
     resumo: "Mostra o top de espectadores mais ativos no mês, atualizando sozinho.",
     secoes: [
       { h: "O que é" },
-      { p: "Uma lista com os espectadores que mais pontuaram no mês atual, ordenada do maior pro menor, atualizando em tempo real conforme os eventos chegam. Usa a mesma pontuação configurada em Prêmios da live." },
+      { p: "Uma lista com os espectadores que mais pontuaram no mês atual, ordenada do maior pro menor, atualizando em tempo real conforme os eventos chegam (inclusive pontos adicionados na mão em Config > Pontos manuais). Usa a mesma pontuação configurada em Prêmios da live." },
       { h: "Exigir seguidor" },
       { p: "Em Config, você pode ligar a opção \"exigir seguidor\": só espectadores que já seguem (ou acabaram de seguir) você entram na contagem do ranking." },
       { h: "Tamanho do ranking" },
       { p: "Defina quantos espectadores aparecem na lista (top 5 é o padrão)." },
       { h: "Reset" },
-      { p: "O ranking acumula o mês inteiro e zera sozinho só na virada do mês — ou na hora, se você usar \"Zerar pontos de todos os espectadores\" em Config > Zona de risco." },
+      { p: "O ranking acumula o mês inteiro e zera sozinho só na virada do mês — ou na hora, se você usar \"Zerar pontos de todos os espectadores\" em Config > Zona de risco. Os dados ficam salvos na nuvem, então persistem entre lives e entre dispositivos diferentes." },
     ],
   },
   {
@@ -684,12 +694,14 @@ const MANUAIS = [
     titulo: "Config",
     icone: "fa-solid fa-sliders",
     cor: "var(--ic-config)",
-    resumo: "Conexão com o TikFinity e as ferramentas de reset de pontos.",
+    resumo: "Conexão com o TikFinity, pontos manuais e as ferramentas de reset de pontos.",
     secoes: [
       { h: "Conexão" },
       { p: "Cole aqui o endereço WebSocket que o TikFinity mostra na tela dele — é isso que faz os overlays receberem em tempo real os eventos da sua live (mensagens, likes, presentes, seguidores, compartilhamentos)." },
+      { h: "Pontos manuais" },
+      { p: "Dá pra somar pontos na mão pra um espectador (digite o nome e a quantidade — número negativo tira pontos) sem precisar de nenhum evento da live. Entra na fonte \"manual\": escolha em cada prêmio (aba Prêmios da live) se ele conta esses pontos também. Some direto no Ranking. Funciona mesmo com os overlays já abertos no OBS." },
       { h: "Zona de risco" },
-      { p: "Todos os pontos (mensagem, like, presente, seguidor, compartilhamento) acumulam sozinhos o mês inteiro, sem precisar de nada aqui — só zeram na virada do mês. O botão \"Zerar pontos de todos os espectadores\" apaga TUDO antes disso, sem volta. Use só se quiser mesmo começar do zero (por exemplo, numa nova temporada)." },
+      { p: "Todos os pontos (mensagem, like, presente, seguidor, compartilhamento, manual) acumulam sozinhos o mês inteiro, sem precisar de nada aqui — só zeram na virada do mês. O botão \"Zerar pontos de todos os espectadores\" apaga TUDO antes disso, sem volta. Use só se quiser mesmo começar do zero (por exemplo, numa nova temporada)." },
     ],
   },
   {
@@ -803,7 +815,7 @@ function carregarFonteGoogle(fonteKey) {
   return f.css;
 }
 
-const LEGENDA_FONTES = { mensagem: "chat", like: "likes", presente: "presente", seguidor: "seguidor", compartilhamento: "compartilhar" };
+const LEGENDA_FONTES = { mensagem: "chat", like: "likes", presente: "presente", seguidor: "seguidor", compartilhamento: "compartilhar", manual: "manual" };
 
 // calcula o valor (diamantes x repetições) de um evento de presente,
 // respeitando presentes "de sequência" (giftType 1, tipo Rosa): esses
@@ -986,6 +998,41 @@ function tocarSomDeUrl(url, volume0a100) {
     audio.play().catch(e => console.warn("[som] não consegui tocar o link (o site pode bloquear uso externo):", e));
     return () => { try { audio.pause(); } catch (e) {} };
   } catch (e) { console.warn("[som] falhou:", e); return () => {}; }
+}
+
+// lê um arquivo de áudio escolhido no computador e devolve como data URL —
+// assim dá pra usar QUALQUER som salvo no PC/celular, sem depender de link
+// externo (evita problema de site bloquear uso fora dele / CORS).
+function lerArquivoAudioComoDataUrl(arquivo) {
+  return new Promise((resolve, reject) => {
+    if (!arquivo) { reject(new Error("nenhum arquivo")); return; }
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(leitor.result);
+    leitor.onerror = () => reject(leitor.error || new Error("falha ao ler arquivo"));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+// liga um <input type="file"> a um <input> de URL: ao escolher um arquivo,
+// converte pra data URL e joga no campo de URL (disparando input/change pra
+// quem estiver ouvindo o campo perceber a mudança).
+function wireUploadDeAudio(inputFileEl, inputUrlEl) {
+  if (!inputFileEl || !inputUrlEl) return;
+  inputFileEl.addEventListener("change", async () => {
+    const arquivo = inputFileEl.files && inputFileEl.files[0];
+    if (!arquivo) return;
+    try {
+      const dataUrl = await lerArquivoAudioComoDataUrl(arquivo);
+      inputUrlEl.value = dataUrl;
+      inputUrlEl.dispatchEvent(new Event("input", { bubbles: true }));
+      inputUrlEl.dispatchEvent(new Event("change", { bubbles: true }));
+    } catch (e) {
+      console.warn("[som] falha ao carregar arquivo:", e);
+      alert("Não consegui carregar esse arquivo de áudio. Tente outro arquivo.");
+    } finally {
+      inputFileEl.value = "";
+    }
+  });
 }
 
 // dispara o som configurado pra um evento (embutido ou link personalizado)
@@ -2453,6 +2500,9 @@ function renderPainel() {
         </div>
         <div id="aeSomUrlWrap" style="margin-bottom:10px;${a.som.som === "personalizado" ? "" : "display:none;"}">
           <input id="aeSomUrl" type="text" value="${a.som.url || ""}" placeholder="https://... (link direto do arquivo de áudio)" style="${estiloCampoAE}"/>
+          <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;margin-top:6px;">ou envie um arquivo do seu computador:
+            <input id="aeSomArquivo" type="file" accept="audio/*" style="font-size:11px;"/>
+          </label>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:8px;">
           <div><label style="${rotuloAE}">Volume (vazio = usa o geral)</label><input id="aeSomVolume" type="number" min="0" max="100" value="${a.som.volume != null ? a.som.volume : ""}" style="${estiloCampoAE}"/></div>
@@ -2514,6 +2564,7 @@ function renderPainel() {
     document.getElementById("aeSomTipo").addEventListener("change", () => {
       document.getElementById("aeSomUrlWrap").style.display = document.getElementById("aeSomTipo").value === "personalizado" ? "" : "none";
     });
+    wireUploadDeAudio(document.getElementById("aeSomArquivo"), document.getElementById("aeSomUrl"));
     document.getElementById("aeFundoTipo").addEventListener("change", () => {
       const t = document.getElementById("aeFundoTipo").value;
       document.getElementById("aeFundoCor2Wrap").style.display = t === "gradiente" ? "" : "none";
@@ -2919,7 +2970,7 @@ function renderPainel() {
             <select data-passo="${i}" data-passocampo="som" style="${estiloMini}">
               ${Object.entries(SONS_DISPONIVEIS).map(([k, s]) => `<option value="${k}" ${p.som === k ? "selected" : ""}>${s.nome}</option>`).join("")}
             </select>
-            ${p.som === "personalizado" ? `<input data-passo="${i}" data-passocampo="url" type="text" placeholder="URL do áudio" value="${p.url || ""}" style="${estiloMini}flex:1;min-width:120px;"/>` : ""}
+            ${p.som === "personalizado" ? `<input data-passo="${i}" data-passocampo="url" type="text" placeholder="URL do áudio" value="${p.url || ""}" style="${estiloMini}flex:1;min-width:120px;"/><input data-passoarquivo="${i}" type="file" accept="audio/*" style="font-size:11px;max-width:140px;"/>` : ""}
           `;
         } else if (p.tipo === "confete" || p.tipo === "fogos") {
           camposExtras = `<span style="font-size:11px;color:var(--text-faint);">cor</span><input data-passo="${i}" data-passocampo="cor" type="color" value="${p.cor || "#F0A63C"}" style="width:40px;height:30px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;padding:2px;"/>`;
@@ -2981,6 +3032,20 @@ function renderPainel() {
       });
       container.querySelectorAll("[data-removerpasso]").forEach(btn => {
         btn.addEventListener("click", () => { regraState.passos.splice(Number(btn.dataset.removerpasso), 1); renderPassosUI(); });
+      });
+      container.querySelectorAll("[data-passoarquivo]").forEach(inputArquivo => {
+        inputArquivo.addEventListener("change", async () => {
+          const arquivo = inputArquivo.files && inputArquivo.files[0];
+          if (!arquivo) return;
+          try {
+            const dataUrl = await lerArquivoAudioComoDataUrl(arquivo);
+            regraState.passos[Number(inputArquivo.dataset.passoarquivo)].url = dataUrl;
+            renderPassosUI();
+          } catch (e) {
+            console.warn("[som] falha ao carregar arquivo:", e);
+            alert("Não consegui carregar esse arquivo de áudio. Tente outro arquivo.");
+          }
+        });
       });
       document.getElementById("rgAddPasso").addEventListener("click", () => {
         regraState.passos.push({ tipo: "esperar", segundos: 2, som: "ding", url: "", volume: null, cor: "#F0A63C", variavelId: variaveisEditando[0] ? variaveisEditando[0].id : "", operacao: "incrementar", valor: "1", regraId: "" });
@@ -3355,9 +3420,14 @@ function renderPainel() {
   secaoConfig.appendChild(form);
 
   const fontesDisponiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
+  // prêmios (tiers) também podem contar pontos adicionados na mão (aba
+  // "Pontos manuais" do Config) — combo fica de fora, já que pontos
+  // manuais não são um evento da live pra formar sequência.
+  const fontesTierDisponiveis = [...fontesDisponiveis, "manual"];
 
   const SUBPAGINAS_CONFIG = [
     { id: "conexao",    label: "Conexão",           icone: "fa-plug" },
+    { id: "manual",     label: "Pontos manuais",    icone: "fa-hand-holding-dollar" },
     { id: "zona",       label: "Zona de risco",     icone: "fa-triangle-exclamation" },
   ];
 
@@ -3378,6 +3448,27 @@ function renderPainel() {
             Esse campo aceita qualquer fonte compatível: se um dia você usar outro programa (ou seu próprio bridge) em vez do TikFinity, basta trocar o endereço aqui — não precisa ser TikFinity especificamente, contanto que mande os eventos no mesmo formato.
           </p>
           ${campoTexto("wsUrl", "Endereço da conexão (WebSocket)", cfg.tikfinityWsUrl)}
+        </div>
+        <div class="config-subpage oculto" data-subpage="manual">
+          <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Adicionar pontos manualmente</div>
+          <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;line-height:1.5;">
+            Pra dar pontos na mão pra alguém, sem precisar de presente/like/etc — soma direto no Ranking. Nos Prêmios (aba "Prêmios da live"), cada prêmio tem um checkbox "manual" pra escolher se ele também conta pontos manuais.<br/>
+            Digite o mesmo nome que já aparece no Ranking pra somar em quem já existe — um nome novo cria um espectador novo. Isso funciona mesmo com o overlay já aberto no OBS (atualiza sozinho).
+          </p>
+          <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;">
+            <div>
+              <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">nome do espectador</label>
+              <input id="manualNick" type="text" list="manualNicksConhecidos" placeholder="ex: joao123" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/>
+              <datalist id="manualNicksConhecidos"></datalist>
+            </div>
+            <div>
+              <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">pontos (pode ser negativo)</label>
+              <input id="manualPontos" type="number" value="100" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/>
+            </div>
+            <button id="manualAdicionar" class="btn-cta" style="border-radius:6px;padding:9px 16px;font-size:13px;cursor:pointer;">Adicionar</button>
+          </div>
+          <p id="manualMsg" style="font-size:12px;color:var(--accent);margin:0 0 14px;display:none;font-family:var(--font-mono);"></p>
+          <div id="manualListaRecentes" style="font-size:12px;color:var(--text-dim);"></div>
         </div>
         <div class="config-subpage oculto" data-subpage="zona">
           <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Zona de risco</div>
@@ -3413,17 +3504,23 @@ function renderPainel() {
         ${comACada ? `<span style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">a cada <input id="som_${id}_aCada" type="number" min="1" value="${valor.aCada}" style="width:48px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:5px;font-size:12px;"/></span>` : ""}
         <button data-testar-som="${id}" style="margin-left:auto;background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;">Testar</button>
       </div>
-      <input id="som_${id}_url" type="text" placeholder="https://... (link direto do arquivo de áudio)" value="${valor.url || ""}" style="${mostrarUrl ? "" : "display:none;"}width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 9px;font-size:12px;"/>
+      <div style="display:${mostrarUrl ? "flex" : "none"};flex-direction:column;gap:6px;" data-som-urlwrap="${id}">
+        <input id="som_${id}_url" type="text" placeholder="https://... (link direto do arquivo de áudio)" value="${valor.url || ""}" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px 9px;font-size:12px;"/>
+        <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;">ou envie um arquivo do seu computador:
+          <input id="som_${id}_arquivo" type="file" accept="audio/*" style="font-size:11px;"/>
+        </label>
+      </div>
     </div>`;
   }
   function wireSomRow(container, id, volumeInputId) {
     const sel = container.querySelector(`select[data-som-select="${id}"]`);
     if (sel) {
       sel.addEventListener("change", () => {
-        const urlInput = document.getElementById(`som_${id}_url`);
-        urlInput.style.display = sel.value === "personalizado" ? "block" : "none";
+        const urlWrap = document.querySelector(`[data-som-urlwrap="${id}"]`);
+        if (urlWrap) urlWrap.style.display = sel.value === "personalizado" ? "flex" : "none";
       });
     }
+    wireUploadDeAudio(document.getElementById(`som_${id}_arquivo`), document.getElementById(`som_${id}_url`));
     const btnTestar = container.querySelector(`[data-testar-som="${id}"]`);
     if (btnTestar) {
       btnTestar.addEventListener("click", () => {
@@ -3435,12 +3532,46 @@ function renderPainel() {
     }
   }
 
+  function renderListaRecentesManual() {
+    const datalist = document.getElementById("manualNicksConhecidos");
+    const lista = document.getElementById("manualListaRecentes");
+    if (!datalist || !lista) return;
+    const ranking = carregarRanking();
+    const nomes = Array.from(new Set(Object.values(ranking).map(u => u.nickname).filter(Boolean)));
+    datalist.innerHTML = nomes.map(n => `<option value="${n}"></option>`).join("");
+    const top = Object.values(ranking).sort((a, b) => b.pontos - a.pontos).slice(0, 8);
+    lista.innerHTML = top.length
+      ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">espectadores do mês (referência rápida)</div>` +
+        top.map(u => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);">${u.nickname}<span style="color:var(--text-faint);">${u.pontos} pts</span></div>`).join("")
+      : `<p style="font-size:11.5px;color:var(--text-faint);margin:0;">Nenhum espectador com pontos ainda.</p>`;
+  }
+  renderListaRecentesManual();
+  document.getElementById("manualAdicionar").addEventListener("click", () => {
+    const nickInput = document.getElementById("manualNick");
+    const pontosInput = document.getElementById("manualPontos");
+    const nick = nickInput.value.trim();
+    const pontos = Number(pontosInput.value);
+    if (!nick) { alert("Digita o nome do espectador."); return; }
+    if (!pontos) { alert("Digita quantos pontos (diferente de zero)."); return; }
+    adicionarPontosManualmente(nick, pontos);
+    const msg = document.getElementById("manualMsg");
+    msg.textContent = `${pontos > 0 ? "+" : ""}${pontos} pontos pra ${nick} ✓`;
+    msg.style.display = "block";
+    setTimeout(() => { msg.style.display = "none"; }, 3500);
+    nickInput.value = "";
+    renderListaRecentesManual();
+  });
+
   document.getElementById("resetarEspectadores").addEventListener("click", () => {
     const ok = confirm("Isso apaga o progresso de TODOS os espectadores (ranking e prêmios) — inclusive nos overlays que já estiverem abertos no OBS. Essa ação não pode ser desfeita. Continuar?");
     if (!ok) return;
     localStorage.removeItem(chaveEspectadores("rankingUsuarios"));
     localStorage.removeItem(chaveEspectadores("premiosPorUsuario"));
     localStorage.removeItem(chaveEspectadores("seguidoresConhecidos"));
+    // zera na nuvem também — senão os overlays voltam a puxar os pontos
+    // antigos de lá assim que o sync roda de novo.
+    if (dbRefPremios) dbRefPremios.remove().catch(() => {});
+    if (dbRefRanking) dbRefRanking.remove().catch(() => {});
     if (dbRefReset) {
       const agora = Date.now();
       localStorage.setItem(chaveEspectadores("ultimoResetAplicado"), String(agora));
@@ -3535,7 +3666,7 @@ function renderPainel() {
         <div style="margin-top:10px;">
           <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">soma pontos de:</label>
           <div style="margin-top:6px;display:flex;gap:14px;flex-wrap:wrap;">
-            ${fontesDisponiveis.map(f => `
+            ${fontesTierDisponiveis.map(f => `
               <label style="font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:5px;">
                 <input type="checkbox" data-i="${i}" data-fonte="${f}" ${t.fontes.includes(f) ? "checked" : ""}/> ${f}
               </label>
@@ -4072,6 +4203,67 @@ function carregarPremios() {
 function salvarPremios(obj) {
   localStorage.setItem(chaveEspectadores("premiosPorUsuario"), JSON.stringify(obj));
 }
+// grava só o espectador que mudou lá na nuvem — em vez de mandar o objeto
+// inteiro, que corre o risco de sobrescrever o que outra tela (painel,
+// overlay de Ranking) tiver salvo um instante antes.
+function salvarPremiosUsuarioNaNuvem(userId, dadosUsuario) {
+  if (!dbRefPremios || modoPreview || !userId) return;
+  try { dbRefPremios.child(userId).set(JSON.parse(JSON.stringify(dadosUsuario))).catch(() => {}); } catch (e) {}
+}
+
+function carregarRanking() {
+  try { return JSON.parse(localStorage.getItem(chaveEspectadores("rankingUsuarios")) || "{}"); }
+  catch (e) { return {}; }
+}
+function salvarRanking(obj) {
+  localStorage.setItem(chaveEspectadores("rankingUsuarios"), JSON.stringify(obj));
+}
+function salvarRankingUsuarioNaNuvem(userId, dadosUsuario) {
+  if (!dbRefRanking || modoPreview || !userId) return;
+  try { dbRefRanking.child(userId).set(JSON.parse(JSON.stringify(dadosUsuario))).catch(() => {}); } catch (e) {}
+}
+
+// ------------------------------------------------------------
+// Pontos "na mão" (fora de presente/like/etc): usado pela aba "Pontos
+// manuais" do Config. Junta pelo nickname (ignora @ e maiúsc/minúsc) com
+// quem já apareceu no Ranking/Prêmios — nome novo cria espectador novo.
+// Sempre grava local E na nuvem, então funciona mesmo com o painel e o
+// overlay do OBS sendo dois navegadores diferentes.
+// ------------------------------------------------------------
+function normalizarNickParaBusca(nick) { return String(nick || "").trim().toLowerCase().replace(/^@/, ""); }
+function encontrarOuCriarUserId(nick) {
+  const alvo = normalizarNickParaBusca(nick);
+  const ranking = carregarRanking();
+  const achadoRanking = Object.entries(ranking).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
+  if (achadoRanking) return achadoRanking[0];
+  const premios = carregarPremios();
+  const achadoPremios = Object.entries(premios).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
+  if (achadoPremios) return achadoPremios[0];
+  return "manual_" + (alvo.replace(/[^a-z0-9_]/g, "") || "espectador") + "_" + Date.now();
+}
+function adicionarPontosManualmente(nick, pontos) {
+  const userId = encontrarOuCriarUserId(nick);
+  const nickLimpo = String(nick || "").trim();
+  const fontesTodas = ["mensagem", "like", "presente", "seguidor", "compartilhamento", "manual"];
+
+  const premios = carregarPremios();
+  if (!premios[userId]) premios[userId] = { nickname: nickLimpo, fontes: {}, tiersGanhos: [] };
+  if (!premios[userId].fontes) premios[userId].fontes = {};
+  fontesTodas.forEach(f => { if (typeof premios[userId].fontes[f] !== "number") premios[userId].fontes[f] = 0; });
+  if (nickLimpo) premios[userId].nickname = nickLimpo;
+  premios[userId].fontes.manual += pontos;
+  salvarPremios(premios);
+  salvarPremiosUsuarioNaNuvem(userId, premios[userId]);
+
+  const ranking = carregarRanking();
+  if (!ranking[userId]) ranking[userId] = { nickname: nickLimpo, pontos: 0 };
+  if (nickLimpo) ranking[userId].nickname = nickLimpo;
+  ranking[userId].pontos = (ranking[userId].pontos || 0) + pontos;
+  salvarRanking(ranking);
+  salvarRankingUsuarioNaNuvem(userId, ranking[userId]);
+
+  return userId;
+}
 
 // ------------------------------------------------------------
 // Pontos de presente: cada presente cai numa faixa (pelo tamanho dele
@@ -4114,6 +4306,10 @@ function checarResetAutomaticoMensal() {
     });
     salvarPremios(premiosAtual);
     localStorage.removeItem(chaveEspectadores("rankingUsuarios"));
+    // também zera na nuvem — senão o próprio sync (dbRefPremios/dbRefRanking
+    // "on value") traz os pontos antigos de volta um instante depois.
+    if (dbRefPremios && !modoPreview) dbRefPremios.set(premiosAtual).catch(() => {});
+    if (dbRefRanking && !modoPreview) dbRefRanking.remove().catch(() => {});
     resetou = true;
   }
   localStorage.setItem(chaveMesReferencia(), mesAtual);
@@ -4130,8 +4326,17 @@ function renderMetas() {
   // dados frescos (zerados, se acabou de virar o mês) daqui pra baixo.
   checarResetAutomaticoMensal();
 
-  const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento"];
-  const premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, tiersGanhos:[] } }
+  const fontesPossiveis = ["mensagem", "like", "presente", "seguidor", "compartilhamento", "manual"];
+  let premios = carregarPremios(); // { [userId]: { nickname, fontes:{...}, tiersGanhos:[] } }
+  // fica ouvindo a nuvem: se alguém adicionar pontos manuais no painel (ou
+  // se essa tela tiver aberto sem nada no localStorage local), atualiza
+  // sozinho sem precisar recarregar a página.
+  if (dbRefPremios && !modoPreview) {
+    dbRefPremios.on("value", snap => {
+      const daNuvem = snap.val();
+      if (daNuvem) { premios = daNuvem; salvarPremios(premios); }
+    });
+  }
 
   const LAYOUTS_METAS = {
     lateral: { css: "position:fixed;top:24px;left:24px;max-width:380px;display:flex;flex-direction:column;gap:10px;", escala: 1 },
@@ -4211,6 +4416,7 @@ function renderMetas() {
     if (tipo === "share") u.fontes.compartilhamento += v.compartilhamento;
 
     salvarPremios(premios);
+    salvarPremiosUsuarioNaNuvem(userId, u);
     checarTiers(userId);
   }
 
@@ -4235,10 +4441,18 @@ function renderRanking() {
   // lives — só zera na virada do mês (ver checarResetAutomaticoMensal).
   checarResetAutomaticoMensal();
 
-  let ranking = JSON.parse(localStorage.getItem(chaveEspectadores("rankingUsuarios")) || "{}");
+  let ranking = carregarRanking();
   let seguidoresConhecidos = JSON.parse(localStorage.getItem(chaveEspectadores("seguidoresConhecidos")) || "{}");
-  function salvarRanking() { localStorage.setItem(chaveEspectadores("rankingUsuarios"), JSON.stringify(ranking)); }
   function salvarSeguidores() { localStorage.setItem(chaveEspectadores("seguidoresConhecidos"), JSON.stringify(seguidoresConhecidos)); }
+  // igual no overlay de Prêmios: fica ouvindo a nuvem pra pegar pontos
+  // manuais adicionados no painel (ou recuperar os dados se essa tela
+  // abriu com o localStorage local vazio) e atualiza a lista na hora.
+  if (dbRefRanking && !modoPreview) {
+    dbRefRanking.on("value", snap => {
+      const daNuvem = snap.val();
+      if (daNuvem) { ranking = daNuvem; salvarRanking(ranking); render(); }
+    });
+  }
 
   function ehSeguidor(userId, data) {
     if (typeof data.followRole === "number") {
@@ -4255,7 +4469,8 @@ function renderRanking() {
     if (!ranking[userId]) ranking[userId] = { nickname, pontos: 0 };
     ranking[userId].nickname = nickname || ranking[userId].nickname;
     ranking[userId].pontos += pontos;
-    salvarRanking();
+    salvarRanking(ranking);
+    salvarRankingUsuarioNaNuvem(userId, ranking[userId]);
   }
 
   const root = document.createElement("div");

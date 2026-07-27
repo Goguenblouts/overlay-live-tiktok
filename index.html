@@ -3536,30 +3536,41 @@ function renderPainel() {
     const datalist = document.getElementById("manualNicksConhecidos");
     const lista = document.getElementById("manualListaRecentes");
     if (!datalist || !lista) return;
-    const ranking = carregarRanking();
-    const nomes = Array.from(new Set(Object.values(ranking).map(u => u.nickname).filter(Boolean)));
-    datalist.innerHTML = nomes.map(n => `<option value="${n}"></option>`).join("");
-    const top = Object.values(ranking).sort((a, b) => b.pontos - a.pontos).slice(0, 8);
-    lista.innerHTML = top.length
-      ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">espectadores do mês (referência rápida)</div>` +
-        top.map(u => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);">${u.nickname}<span style="color:var(--text-faint);">${u.pontos} pts</span></div>`).join("")
-      : `<p style="font-size:11.5px;color:var(--text-faint);margin:0;">Nenhum espectador com pontos ainda.</p>`;
+    // busca direto na nuvem — o painel não tem os pontos de verdade no
+    // localStorage dele (quem escreve é o overlay, noutro navegador).
+    if (!dbRefRanking) { lista.innerHTML = ""; return; }
+    dbRefRanking.once("value").then(snap => {
+      const ranking = snap.val() || {};
+      const nomes = Array.from(new Set(Object.values(ranking).map(u => u.nickname).filter(Boolean)));
+      datalist.innerHTML = nomes.map(n => `<option value="${n}"></option>`).join("");
+      const top = Object.values(ranking).sort((a, b) => b.pontos - a.pontos).slice(0, 8);
+      lista.innerHTML = top.length
+        ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">espectadores do mês (referência rápida)</div>` +
+          top.map(u => `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border);">${u.nickname}<span style="color:var(--text-faint);">${u.pontos} pts</span></div>`).join("")
+        : `<p style="font-size:11.5px;color:var(--text-faint);margin:0;">Nenhum espectador com pontos ainda.</p>`;
+    }).catch(() => {});
   }
   renderListaRecentesManual();
   document.getElementById("manualAdicionar").addEventListener("click", () => {
     const nickInput = document.getElementById("manualNick");
     const pontosInput = document.getElementById("manualPontos");
+    const btnAdicionar = document.getElementById("manualAdicionar");
     const nick = nickInput.value.trim();
     const pontos = Number(pontosInput.value);
     if (!nick) { alert("Digita o nome do espectador."); return; }
     if (!pontos) { alert("Digita quantos pontos (diferente de zero)."); return; }
-    adicionarPontosManualmente(nick, pontos);
-    const msg = document.getElementById("manualMsg");
-    msg.textContent = `${pontos > 0 ? "+" : ""}${pontos} pontos pra ${nick} ✓`;
-    msg.style.display = "block";
-    setTimeout(() => { msg.style.display = "none"; }, 3500);
-    nickInput.value = "";
-    renderListaRecentesManual();
+    btnAdicionar.disabled = true;
+    btnAdicionar.textContent = "Adicionando...";
+    adicionarPontosManualmente(nick, pontos, () => {
+      btnAdicionar.disabled = false;
+      btnAdicionar.textContent = "Adicionar";
+      const msg = document.getElementById("manualMsg");
+      msg.textContent = `${pontos > 0 ? "+" : ""}${pontos} pontos pra ${nick} ✓`;
+      msg.style.display = "block";
+      setTimeout(() => { msg.style.display = "none"; }, 3500);
+      nickInput.value = "";
+      renderListaRecentesManual();
+    });
   });
 
   document.getElementById("resetarEspectadores").addEventListener("click", () => {
@@ -4203,12 +4214,18 @@ function carregarPremios() {
 function salvarPremios(obj) {
   localStorage.setItem(chaveEspectadores("premiosPorUsuario"), JSON.stringify(obj));
 }
-// grava só o espectador que mudou lá na nuvem — em vez de mandar o objeto
-// inteiro, que corre o risco de sobrescrever o que outra tela (painel,
-// overlay de Ranking) tiver salvo um instante antes.
-function salvarPremiosUsuarioNaNuvem(userId, dadosUsuario) {
-  if (!dbRefPremios || modoPreview || !userId) return;
-  try { dbRefPremios.child(userId).set(JSON.parse(JSON.stringify(dadosUsuario))).catch(() => {}); } catch (e) {}
+// soma um valor no campo de um espectador lá na nuvem SEM NUNCA ler e
+// reescrever o resto do objeto — usa o incremento atômico do Firebase
+// (ServerValue.increment), que soma direto no servidor. Isso é essencial
+// pra dois "escritores" diferentes (o overlay ao vivo no OBS e o painel
+// somando pontos manuais) nunca um apagar o progresso que o outro já
+// tinha salvo — cada update só toca o campo que mudou, nada mais.
+function incrementarPontosNaNuvem(dbRef, userId, caminho, delta, nickname) {
+  if (!dbRef || modoPreview || !userId || !delta) return;
+  const atualizacoes = {};
+  atualizacoes[caminho] = firebase.database.ServerValue.increment(delta);
+  if (nickname) atualizacoes.nickname = nickname;
+  try { dbRef.child(userId).update(atualizacoes).catch(() => {}); } catch (e) {}
 }
 
 function carregarRanking() {
@@ -4218,51 +4235,41 @@ function carregarRanking() {
 function salvarRanking(obj) {
   localStorage.setItem(chaveEspectadores("rankingUsuarios"), JSON.stringify(obj));
 }
-function salvarRankingUsuarioNaNuvem(userId, dadosUsuario) {
-  if (!dbRefRanking || modoPreview || !userId) return;
-  try { dbRefRanking.child(userId).set(JSON.parse(JSON.stringify(dadosUsuario))).catch(() => {}); } catch (e) {}
-}
 
 // ------------------------------------------------------------
 // Pontos "na mão" (fora de presente/like/etc): usado pela aba "Pontos
-// manuais" do Config. Junta pelo nickname (ignora @ e maiúsc/minúsc) com
-// quem já apareceu no Ranking/Prêmios — nome novo cria espectador novo.
-// Sempre grava local E na nuvem, então funciona mesmo com o painel e o
-// overlay do OBS sendo dois navegadores diferentes.
+// manuais" do Config. O painel (navegador do streamer) NÃO tem os pontos
+// de verdade no localStorage dele — quem escreve isso é o overlay,
+// rodando num navegador separado (dentro do OBS) — então a busca pelo
+// espectador (por nickname) e a soma dos pontos vão direto na nuvem,
+// nunca no cache local daqui. Assim: (1) acha o userId de verdade do
+// espectador, em vez de criar um espectador "fantasma" duplicado; (2) soma
+// por cima com incremento atômico, sem apagar o que ele já tinha.
 // ------------------------------------------------------------
 function normalizarNickParaBusca(nick) { return String(nick || "").trim().toLowerCase().replace(/^@/, ""); }
-function encontrarOuCriarUserId(nick) {
+function encontrarUserIdNaNuvemPorNick(nick, callback) {
   const alvo = normalizarNickParaBusca(nick);
-  const ranking = carregarRanking();
-  const achadoRanking = Object.entries(ranking).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
-  if (achadoRanking) return achadoRanking[0];
-  const premios = carregarPremios();
-  const achadoPremios = Object.entries(premios).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
-  if (achadoPremios) return achadoPremios[0];
-  return "manual_" + (alvo.replace(/[^a-z0-9_]/g, "") || "espectador") + "_" + Date.now();
+  if (!dbRefRanking) { callback(null); return; }
+  dbRefRanking.once("value").then(snap => {
+    const dados = snap.val() || {};
+    const achado = Object.entries(dados).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
+    if (achado) { callback(achado[0]); return; }
+    if (!dbRefPremios) { callback(null); return; }
+    dbRefPremios.once("value").then(snap2 => {
+      const dados2 = snap2.val() || {};
+      const achado2 = Object.entries(dados2).find(([, u]) => normalizarNickParaBusca(u.nickname) === alvo);
+      callback(achado2 ? achado2[0] : null);
+    }).catch(() => callback(null));
+  }).catch(() => callback(null));
 }
-function adicionarPontosManualmente(nick, pontos) {
-  const userId = encontrarOuCriarUserId(nick);
+function adicionarPontosManualmente(nick, pontos, aoTerminar) {
   const nickLimpo = String(nick || "").trim();
-  const fontesTodas = ["mensagem", "like", "presente", "seguidor", "compartilhamento", "manual"];
-
-  const premios = carregarPremios();
-  if (!premios[userId]) premios[userId] = { nickname: nickLimpo, fontes: {}, tiersGanhos: [] };
-  if (!premios[userId].fontes) premios[userId].fontes = {};
-  fontesTodas.forEach(f => { if (typeof premios[userId].fontes[f] !== "number") premios[userId].fontes[f] = 0; });
-  if (nickLimpo) premios[userId].nickname = nickLimpo;
-  premios[userId].fontes.manual += pontos;
-  salvarPremios(premios);
-  salvarPremiosUsuarioNaNuvem(userId, premios[userId]);
-
-  const ranking = carregarRanking();
-  if (!ranking[userId]) ranking[userId] = { nickname: nickLimpo, pontos: 0 };
-  if (nickLimpo) ranking[userId].nickname = nickLimpo;
-  ranking[userId].pontos = (ranking[userId].pontos || 0) + pontos;
-  salvarRanking(ranking);
-  salvarRankingUsuarioNaNuvem(userId, ranking[userId]);
-
-  return userId;
+  encontrarUserIdNaNuvemPorNick(nickLimpo, (userIdAchado) => {
+    const userId = userIdAchado || ("manual_" + (normalizarNickParaBusca(nickLimpo).replace(/[^a-z0-9_]/g, "") || "espectador") + "_" + Date.now());
+    incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/manual", pontos, nickLimpo);
+    incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, nickLimpo);
+    if (aoTerminar) aoTerminar(userId);
+  });
 }
 
 // ------------------------------------------------------------
@@ -4375,6 +4382,11 @@ function renderMetas() {
       const soma = (tier.fontes || []).reduce((s, f) => s + (u.fontes[f] || 0), 0);
       if (soma >= tier.pontos) {
         u.tiersGanhos.push(tier.id);
+        // sem isso, um reload do overlay perderia a lista de prêmios já
+        // ganhos (ela vem da nuvem) e anunciaria o mesmo prêmio de novo.
+        if (dbRefPremios && !modoPreview) {
+          try { dbRefPremios.child(userId).update({ tiersGanhos: u.tiersGanhos }).catch(() => {}); } catch (e) {}
+        }
         const raridade = raridadeDoTier(index, cfg.tiers.length);
         api.mostrar({
           icone: iconeTierHtml(tier, 22),
@@ -4405,18 +4417,35 @@ function renderMetas() {
 
     if (tipo === "gift") {
       const valorBase = extrairValorPresente(data);
-      if (valorBase !== null) u.fontes.presente += pontosDoPresente(valorBase, cfg);
+      if (valorBase !== null) {
+        const pts = pontosDoPresente(valorBase, cfg);
+        u.fontes.presente += pts;
+        incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/presente", pts, nickname);
+      }
     }
-    if (tipo === "chat" || tipo === "comment") u.fontes.mensagem += v.mensagem;
+    if (tipo === "chat" || tipo === "comment") {
+      u.fontes.mensagem += v.mensagem;
+      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/mensagem", v.mensagem, nickname);
+    }
     if (tipo === "like") {
       const qtd = data.likeCount ?? data.count ?? 1;
-      u.fontes.like += Math.floor(qtd / v.likeACada) * v.likeValor;
+      const ganhos = Math.floor(qtd / v.likeACada) * v.likeValor;
+      u.fontes.like += ganhos;
+      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/like", ganhos, nickname);
     }
-    if (tipo === "follow" || tipo === "member") u.fontes.seguidor += v.seguidor;
-    if (tipo === "share") u.fontes.compartilhamento += v.compartilhamento;
+    if (tipo === "follow" || tipo === "member") {
+      u.fontes.seguidor += v.seguidor;
+      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/seguidor", v.seguidor, nickname);
+    }
+    if (tipo === "share") {
+      u.fontes.compartilhamento += v.compartilhamento;
+      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/compartilhamento", v.compartilhamento, nickname);
+    }
 
+    // salva local só como cache/fallback — quem manda de verdade agora é a
+    // nuvem, um campo por vez (incrementarPontosNaNuvem acima), pra nunca
+    // apagar pontos que outra tela (painel, ranking) tenha somado.
     salvarPremios(premios);
-    salvarPremiosUsuarioNaNuvem(userId, u);
     checarTiers(userId);
   }
 
@@ -4453,6 +4482,15 @@ function renderRanking() {
       if (daNuvem) { ranking = daNuvem; salvarRanking(ranking); render(); }
     });
   }
+  // também ouve os prêmios — só pra mostrar certinho quantos prêmios cada
+  // um já ganhou aqui na lista (quem soma os pontos de verdade é o overlay
+  // de Prêmios da live).
+  if (dbRefPremios && !modoPreview) {
+    dbRefPremios.on("value", snap => {
+      const daNuvem = snap.val();
+      if (daNuvem) { salvarPremios(daNuvem); render(); }
+    });
+  }
 
   function ehSeguidor(userId, data) {
     if (typeof data.followRole === "number") {
@@ -4469,8 +4507,8 @@ function renderRanking() {
     if (!ranking[userId]) ranking[userId] = { nickname, pontos: 0 };
     ranking[userId].nickname = nickname || ranking[userId].nickname;
     ranking[userId].pontos += pontos;
-    salvarRanking(ranking);
-    salvarRankingUsuarioNaNuvem(userId, ranking[userId]);
+    salvarRanking(ranking); // cache local — a nuvem manda, ver incremento abaixo
+    incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, nickname);
   }
 
   const root = document.createElement("div");

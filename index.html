@@ -3453,13 +3453,14 @@ function renderPainel() {
           <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Adicionar pontos manualmente</div>
           <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;line-height:1.5;">
             Pra dar pontos na mão pra alguém, sem precisar de presente/like/etc — soma direto no Ranking. Nos Prêmios (aba "Prêmios da live"), cada prêmio tem um checkbox "manual" pra escolher se ele também conta pontos manuais.<br/>
-            Digite o mesmo nome que já aparece no Ranking pra somar em quem já existe — um nome novo cria um espectador novo. Isso funciona mesmo com o overlay já aberto no OBS (atualiza sozinho).
+            Escolha o espectador na lista (é o nome de verdade, sem risco de duplicar) — só use "espectador novo" se a pessoa realmente nunca participou dessa live ainda. Isso funciona mesmo com o overlay já aberto (atualiza sozinho).
           </p>
-          <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;margin-bottom:10px;">
+          <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
             <div>
-              <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">nome do espectador</label>
-              <input id="manualNick" type="text" list="manualNicksConhecidos" placeholder="ex: joao123" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/>
-              <datalist id="manualNicksConhecidos"></datalist>
+              <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">espectador</label>
+              <select id="manualNickSelect" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;">
+                <option value="">Carregando espectadores...</option>
+              </select>
             </div>
             <div>
               <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">pontos (pode ser negativo)</label>
@@ -3467,8 +3468,18 @@ function renderPainel() {
             </div>
             <button id="manualAdicionar" class="btn-cta" style="border-radius:6px;padding:9px 16px;font-size:13px;cursor:pointer;">Adicionar</button>
           </div>
+          <div id="manualNickNovoWrap" style="display:none;margin-bottom:10px;">
+            <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">nome exato (@) do espectador novo</label>
+            <input id="manualNickNovo" type="text" placeholder="cole/digite igualzinho ao nome dela no TikTok" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;"/>
+            <p style="font-size:11px;color:var(--text-faint);margin:5px 0 0;">Só use isso se a pessoa NUNCA participou dessa live ainda (nenhum like/comentário/etc). Se ela já apareceu, escolha o nome dela na lista acima — evita criar um espectador duplicado.</p>
+          </div>
           <p id="manualMsg" style="font-size:12px;color:var(--accent);margin:0 0 14px;display:none;font-family:var(--font-mono);"></p>
-          <div id="manualListaRecentes" style="font-size:12px;color:var(--text-dim);"></div>
+          <div id="manualListaRecentes" style="font-size:12px;color:var(--text-dim);margin-bottom:16px;"></div>
+          <div id="manualDuplicadosWrap" style="display:none;border-top:1px solid var(--border);padding-top:14px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;color:#e0637a;">Espectadores duplicados encontrados</div>
+            <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 10px;">Aconteceu de um nome digitado não bater 100% com o nickname real (emoji, espaço, etc.) e criar um registro separado. Clique em "Mesclar" pra juntar os pontos no espectador de verdade e apagar o duplicado.</p>
+            <div id="manualListaDuplicados"></div>
+          </div>
         </div>
         <div class="config-subpage oculto" data-subpage="zona">
           <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Zona de risco</div>
@@ -3533,16 +3544,12 @@ function renderPainel() {
   }
 
   function renderListaRecentesManual() {
-    const datalist = document.getElementById("manualNicksConhecidos");
     const lista = document.getElementById("manualListaRecentes");
-    if (!datalist || !lista) return;
+    if (!lista || !dbRefRanking) return;
     // busca direto na nuvem — o painel não tem os pontos de verdade no
     // localStorage dele (quem escreve é o overlay, noutro navegador).
-    if (!dbRefRanking) { lista.innerHTML = ""; return; }
     dbRefRanking.once("value").then(snap => {
       const ranking = snap.val() || {};
-      const nomes = Array.from(new Set(Object.values(ranking).map(u => u.nickname).filter(Boolean)));
-      datalist.innerHTML = nomes.map(n => `<option value="${n}"></option>`).join("");
       const top = Object.values(ranking).sort((a, b) => b.pontos - a.pontos).slice(0, 8);
       lista.innerHTML = top.length
         ? `<div style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:6px;">espectadores do mês (referência rápida)</div>` +
@@ -3550,27 +3557,118 @@ function renderPainel() {
         : `<p style="font-size:11.5px;color:var(--text-faint);margin:0;">Nenhum espectador com pontos ainda.</p>`;
     }).catch(() => {});
   }
+
+  // popula o <select> com os espectadores DE VERDADE (vindos da nuvem) —
+  // escolher da lista em vez de digitar elimina o risco de criar
+  // duplicado por causa de emoji/espaço/maiúscula diferente no nome.
+  function carregarOpcoesManual() {
+    const select = document.getElementById("manualNickSelect");
+    if (!select) return;
+    const opcaoNovo = `<option value="novo">+ espectador novo (nunca participou ainda)</option>`;
+    if (!dbRefRanking) { select.innerHTML = opcaoNovo; return; }
+    dbRefRanking.once("value").then(snap => {
+      const ranking = snap.val() || {};
+      const itens = Object.entries(ranking)
+        .map(([id, u]) => ({ id, nickname: u.nickname || id, pontos: u.pontos || 0 }))
+        .sort((a, b) => b.pontos - a.pontos);
+      select.innerHTML = `<option value="">Escolha...</option>` +
+        itens.map(u => `<option value="${u.id}">${u.nickname} — ${u.pontos} pts</option>`).join("") +
+        opcaoNovo;
+    }).catch(() => { select.innerHTML = opcaoNovo; });
+  }
+
+  // detecta pares "espectador real" + "fantasma" (mesmo nome, criado antes
+  // de mudarmos pra lista) e oferece um botão pra mesclar num clique.
+  function carregarDuplicadosManual() {
+    const wrap = document.getElementById("manualDuplicadosWrap");
+    const lista = document.getElementById("manualListaDuplicados");
+    if (!wrap || !lista || !dbRefRanking) return;
+    dbRefRanking.once("value").then(snap => {
+      const ranking = snap.val() || {};
+      const porNick = {};
+      Object.entries(ranking).forEach(([id, u]) => {
+        const chave = normalizarNickParaBusca(u.nickname);
+        if (!chave) return;
+        if (!porNick[chave]) porNick[chave] = [];
+        porNick[chave].push({ id, nickname: u.nickname, pontos: u.pontos || 0 });
+      });
+      const pares = [];
+      Object.values(porNick).forEach(itens => {
+        if (itens.length < 2) return;
+        const real = itens.find(x => !x.id.startsWith("manual_"));
+        const fantasmas = itens.filter(x => x.id.startsWith("manual_"));
+        if (real && fantasmas.length) fantasmas.forEach(f => pares.push({ real, fantasma: f }));
+      });
+      if (!pares.length) { wrap.style.display = "none"; lista.innerHTML = ""; return; }
+      wrap.style.display = "block";
+      lista.innerHTML = pares.map((p, i) => `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:12px;">
+          <span>${p.real.nickname} <span style="color:var(--text-faint);">(${p.real.pontos} pts real + ${p.fantasma.pontos} pts duplicado)</span></span>
+          <button data-mesclar="${i}" style="background:transparent;color:var(--accent);border:1px solid var(--border);border-radius:6px;padding:5px 10px;font-size:11px;cursor:pointer;">Mesclar</button>
+        </div>`).join("");
+      lista.querySelectorAll("[data-mesclar]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const par = pares[Number(btn.dataset.mesclar)];
+          btn.disabled = true;
+          btn.textContent = "Mesclando...";
+          mesclarDuplicadoManual(par.real.id, par.fantasma.id, par.fantasma.pontos, () => {
+            carregarDuplicadosManual();
+            renderListaRecentesManual();
+            carregarOpcoesManual();
+          });
+        });
+      });
+    }).catch(() => {});
+  }
+
   renderListaRecentesManual();
+  carregarOpcoesManual();
+  carregarDuplicadosManual();
+
+  document.getElementById("manualNickSelect").addEventListener("change", () => {
+    const val = document.getElementById("manualNickSelect").value;
+    document.getElementById("manualNickNovoWrap").style.display = val === "novo" ? "block" : "none";
+  });
+
   document.getElementById("manualAdicionar").addEventListener("click", () => {
-    const nickInput = document.getElementById("manualNick");
+    const select = document.getElementById("manualNickSelect");
+    const nickNovoInput = document.getElementById("manualNickNovo");
     const pontosInput = document.getElementById("manualPontos");
     const btnAdicionar = document.getElementById("manualAdicionar");
-    const nick = nickInput.value.trim();
+    const escolha = select.value;
     const pontos = Number(pontosInput.value);
-    if (!nick) { alert("Digita o nome do espectador."); return; }
+    if (!escolha) { alert("Escolhe um espectador na lista."); return; }
     if (!pontos) { alert("Digita quantos pontos (diferente de zero)."); return; }
-    btnAdicionar.disabled = true;
-    btnAdicionar.textContent = "Adicionando...";
-    adicionarPontosManualmente(nick, pontos, () => {
+
+    const finalizar = (nomeExibido) => {
       btnAdicionar.disabled = false;
       btnAdicionar.textContent = "Adicionar";
       const msg = document.getElementById("manualMsg");
-      msg.textContent = `${pontos > 0 ? "+" : ""}${pontos} pontos pra ${nick} ✓`;
+      msg.textContent = `${pontos > 0 ? "+" : ""}${pontos} pontos pra ${nomeExibido} ✓`;
       msg.style.display = "block";
       setTimeout(() => { msg.style.display = "none"; }, 3500);
-      nickInput.value = "";
+      nickNovoInput.value = "";
+      document.getElementById("manualNickNovoWrap").style.display = "none";
       renderListaRecentesManual();
-    });
+      carregarOpcoesManual();
+      carregarDuplicadosManual();
+    };
+
+    btnAdicionar.disabled = true;
+    btnAdicionar.textContent = "Adicionando...";
+    if (escolha === "novo") {
+      const nick = nickNovoInput.value.trim();
+      if (!nick) {
+        alert("Digita o nome do espectador novo.");
+        btnAdicionar.disabled = false;
+        btnAdicionar.textContent = "Adicionar";
+        return;
+      }
+      adicionarPontosManualmente(nick, pontos, () => finalizar(nick));
+    } else {
+      const nomeExibido = (select.options[select.selectedIndex].textContent || "").split(" — ")[0];
+      adicionarPontosPorUserId(escolha, pontos, () => finalizar(nomeExibido));
+    }
   });
 
   document.getElementById("resetarEspectadores").addEventListener("click", () => {
@@ -4270,6 +4368,33 @@ function adicionarPontosManualmente(nick, pontos, aoTerminar) {
     incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, nickLimpo);
     if (aoTerminar) aoTerminar(userId);
   });
+}
+// caminho sem busca por nome — usado quando o streamer ESCOLHE o
+// espectador numa lista (em vez de digitar), então o userId já é o real,
+// sem chance nenhuma de criar duplicado.
+function adicionarPontosPorUserId(userId, pontos, aoTerminar) {
+  incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, null);
+  incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/manual", pontos, null);
+  if (aoTerminar) aoTerminar(userId);
+}
+// junta um espectador "fantasma" (criado por engano, nome não bateu 100%)
+// com o espectador real: soma os pontos dele por cima (incremento atômico)
+// e apaga o fantasma. Usado pela ferramenta "Mesclar duplicados".
+function mesclarDuplicadoManual(userIdReal, userIdFantasma, pontosFantasma, aoTerminar) {
+  if (pontosFantasma) incrementarPontosNaNuvem(dbRefRanking, userIdReal, "pontos", pontosFantasma, null);
+  if (dbRefRanking) { try { dbRefRanking.child(userIdFantasma).remove().catch(() => {}); } catch (e) {} }
+  if (dbRefPremios) {
+    dbRefPremios.child(userIdFantasma).once("value").then(snap => {
+      const dados = snap.val();
+      if (dados && dados.fontes) {
+        Object.entries(dados.fontes).forEach(([f, v]) => {
+          if (v) incrementarPontosNaNuvem(dbRefPremios, userIdReal, "fontes/" + f, v, null);
+        });
+      }
+      try { dbRefPremios.child(userIdFantasma).remove().catch(() => {}); } catch (e) {}
+      if (aoTerminar) aoTerminar();
+    }).catch(() => { if (aoTerminar) aoTerminar(); });
+  } else if (aoTerminar) aoTerminar();
 }
 
 // ------------------------------------------------------------

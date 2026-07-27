@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Conexão com a live</title>
+<style>
+  :root {
+    --bg: #0e0e10; --surface: #1a1a1e; --border: #2a2a30;
+    --accent: #F0464B; --text: #f3f4f2; --text-dim: #93939a;
+    --ok: #28C48A; --erro: #e0637a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, "Segoe UI", Arial, sans-serif;
+    padding: 24px;
+  }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.sub { font-size: 12.5px; color: var(--text-dim); margin: 0 0 20px; line-height: 1.5; }
+  label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; display: block; margin-bottom: 6px; }
+  input {
+    width: 100%; box-sizing: border-box; background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); border-radius: 8px; padding: 11px; font-size: 14px; margin-bottom: 14px;
+  }
+  input:focus { outline: 2px solid var(--accent); }
+  button {
+    width: 100%; border: none; border-radius: 8px; padding: 12px; font-size: 14px; font-weight: 700;
+    cursor: pointer; margin-bottom: 8px; font-family: inherit;
+  }
+  #btnConectar { background: var(--accent); color: #fff; }
+  #btnDesconectar { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #status {
+    margin-top: 18px; padding: 12px 14px; border-radius: 8px; font-size: 12.5px; line-height: 1.5;
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-dim);
+  }
+  #status.conectado { border-color: var(--ok); color: var(--ok); }
+  #status.erro, #status.erro-servidor { border-color: var(--erro); color: var(--erro); }
+  #dica { font-size: 11px; color: var(--text-dim); margin-top: 16px; line-height: 1.6; }
+  code { background: var(--surface); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+  <h1>Conexão com a live</h1>
+  <p class="sub">Digite o @ do perfil que está ao vivo agora — sem senha, é público, igual o TikFinity faz.</p>
+
+  <label for="campoUsername">@ do perfil</label>
+  <input id="campoUsername" type="text" placeholder="seu.usuario" autocomplete="off"/>
+
+  <button id="btnConectar">Conectar</button>
+  <button id="btnDesconectar" disabled>Desconectar</button>
+
+  <div id="status">Ainda não conectado.</div>
+
+  <p id="dica">
+    O painel da Central de Overlays abre junto, numa outra janela.<br/>
+    Os overlays (Browser Source no OBS/TikTok Studio) continuam usando
+    <code>ws://127.0.0.1:21213/</code> — já é o valor padrão, não precisa mexer em nada lá.
+  </p>
+
+  <script>
+    const campoUsername = document.getElementById("campoUsername");
+    const btnConectar = document.getElementById("btnConectar");
+    const btnDesconectar = document.getElementById("btnDesconectar");
+    const statusEl = document.getElementById("status");
+
+    function aplicarStatus(dados) {
+      statusEl.className = dados.status;
+      statusEl.textContent = dados.mensagem || "";
+      const conectando = dados.status === "conectando";
+      const conectado = dados.status === "conectado";
+      btnConectar.disabled = conectando || conectado;
+      btnDesconectar.disabled = !conectado && !conectando;
+    }
+
+    window.central.lerConfig().then((cfg) => {
+      if (cfg && cfg.username) campoUsername.value = cfg.username;
+    });
+    window.central.lerStatus().then(aplicarStatus);
+    window.central.aoAtualizarStatus(aplicarStatus);
+
+    btnConectar.addEventListener("click", () => {
+      window.central.conectar(campoUsername.value);
+    });
+    btnDesconectar.addEventListener("click", () => {
+      window.central.desconectar();
+    });
+    campoUsername.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnConectar.click();
+    });
+  </script>
+</body>
+</html>

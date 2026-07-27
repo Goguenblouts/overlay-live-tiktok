@@ -1,0 +1,38 @@
+{
+  "name": "central-overlays-desktop",
+  "version": "1.0.0",
+  "description": "App desktop da Central de Overlays: conecta direto na sua live do TikTok (sem TikFinity) e alimenta os overlays via WebSocket local.",
+  "main": "main.js",
+  "author": "Marcelio",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "^2.4.2",
+    "ws": "^8.17.0"
+  },
+  "devDependencies": {
+    "electron": "^30.0.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.goguen.centraloverlaysdesktop",
+    "productName": "Central de Overlays",
+    "directories": { "output": "dist" },
+    "files": [
+      "main.js",
+      "control.html",
+      "control-preload.js",
+      "package.json",
+      "index.html",
+      "styles.css",
+      "js-*.js"
+    ],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}

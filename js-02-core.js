@@ -163,13 +163,13 @@ const MANUAIS = [
     secoes: [
       { h: "O que você precisa" },
       { li: [
-        "TikFinity instalado e rodando no seu PC, conectado à sua conta do TikTok.",
+        "O app Central de Overlays — Desktop instalado e aberto no seu PC (conecta direto na sua live do TikTok, só com o @ do perfil — não precisa de TikFinity nem de mais nenhum programa intermediário).",
         "Um programa de transmissão com suporte a Browser Source (fonte de navegador) — OBS Studio, Streamlabs, TikTok LIVE Studio, XSplit, vMix, etc.",
       ] },
       { h: "Passo a passo" },
       { li: [
-        "Abra o TikFinity e copie o endereço WebSocket que ele mostra (geralmente algo como ws://127.0.0.1:21213/).",
-        "Na Central de Overlays, vá em Config > Conexão e cole esse endereço no campo \"Endereço da conexão\". Clique em Salvar configurações.",
+        "Abra o app Central de Overlays — Desktop, digite o @ do perfil que está ao vivo na janela \"Conexão com a live\" e clique em Conectar.",
+        "O endereço da conexão (ws://127.0.0.1:21213/) já vem preenchido por padrão em Config > Conexão — não precisa mexer em nada aí, a menos que você troque de fonte.",
         "Vá na aba Overlays, escolha qual overlay quer usar (Prêmios da live, Ranking, Alerta, Combo, Vitrine ou Eventos) e copie o link dele.",
         "No seu programa de transmissão, crie uma fonte do tipo Browser Source (fonte de navegador), cole o link, e defina o tamanho como 1920x1080.",
         "Repita pra cada overlay que quiser usar — dá pra usar todos ao mesmo tempo, em fontes separadas.",
@@ -321,10 +321,10 @@ const MANUAIS = [
     titulo: "Config",
     icone: "fa-solid fa-sliders",
     cor: "var(--ic-config)",
-    resumo: "Conexão com o TikFinity, pontos manuais e as ferramentas de reset de pontos.",
+    resumo: "Conexão com a live (app desktop), pontos manuais e as ferramentas de reset de pontos.",
     secoes: [
       { h: "Conexão" },
-      { p: "Cole aqui o endereço WebSocket que o TikFinity mostra na tela dele — é isso que faz os overlays receberem em tempo real os eventos da sua live (mensagens, likes, presentes, seguidores, compartilhamentos)." },
+      { p: "Cole aqui o endereço WebSocket que o app Central de Overlays — Desktop (ou o TikFinity, se preferir usar ele) mostra — é isso que faz os overlays receberem em tempo real os eventos da sua live (mensagens, likes, presentes, seguidores, compartilhamentos)." },
       { h: "Pontos manuais" },
       { p: "Dá pra somar pontos na mão pra um espectador (digite o nome e a quantidade — número negativo tira pontos) sem precisar de nenhum evento da live. Entra na fonte \"manual\": escolha em cada prêmio (aba Prêmios da live) se ele conta esses pontos também. Some direto no Ranking. Funciona mesmo com os overlays já abertos no OBS." },
       { h: "Zona de risco" },

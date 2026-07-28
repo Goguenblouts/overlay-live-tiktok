@@ -1,13 +1,26 @@
 # Central de Overlays — Desktop
 
-App desktop (Electron) que substitui o TikFinity: conecta direto na sua
-live do TikTok usando a biblioteca [`tiktok-live-connector`](https://github.com/zerodytrash/TikTok-Live-Connector)
+App desktop (Electron) que conecta direto na sua live do TikTok — sem
+precisar do TikFinity nem de nenhum outro programa intermediário — usando
+a biblioteca [`tiktok-live-connector`](https://github.com/zerodytrash/TikTok-Live-Connector)
 (só o `@` do perfil, sem senha) e repassa os eventos — mensagem, like,
 presente, seguidor, compartilhamento — pra um servidor WebSocket local
 na porta `21213`, exatamente o formato que a Central de Overlays
 (`index.html`, na pasta de cima) já espera por padrão no campo
 "Endereço da conexão" da Config. **O `index.html` não precisa de
 nenhuma alteração** para funcionar com este app.
+
+**Como isso funciona por baixo dos panos:** o TikTok não tem uma API
+oficial pra isso. O `tiktok-live-connector` é um projeto de engenharia
+reversa (o próprio README dele deixa isso bem claro: *"This is not a
+production-ready API. It is a reverse engineering project."*) — ele
+conversa direto com o serviço interno "Webcast" que o TikTok usa pra
+alimentar o chat da live, do mesmo jeito que o TikFinity e outros
+programas parecidos fazem. Não precisa de login nem senha, só do `@`
+público do perfil que está ao vivo. Como não é oficial, o TikTok pode
+mudar esse serviço interno a qualquer momento e quebrar a conexão —
+nesse caso, normalmente uma atualização da biblioteca (`npm update`)
+resolve. A licença dela é AGPL-3.0.
 
 ## Como rodar
 
@@ -43,6 +56,26 @@ npm run dist
 ```
 
 O instalador sai em `central-overlays-desktop/dist/`.
+
+## Sobre o import do `tiktok-live-connector` (importante se você atualizar a lib)
+
+A partir da v2, o pacote raiz `tiktok-live-connector` passou a exportar só
+a classe nova `TikTokLiveConnection` (payload aninhado, ex:
+`data.user.uniqueId`). A classe antiga `WebcastPushConnection` (payload
+"achatado", ex: `data.uniqueId` — o formato que este `main.js` usa) só
+existe no subcaminho `tiktok-live-connector/legacy`, mantido pela própria
+lib pra compatibilidade. Por isso o import aqui é:
+
+```js
+const { WebcastPushConnection } = await import("tiktok-live-connector/legacy");
+```
+
+Se um dia quiser migrar pra API nova (`TikTokLiveConnection` +
+`WebcastEvent`), os campos mudam de nome/formato (ex: `data.user.uniqueId`
+em vez de `data.uniqueId`, `data.giftDetails.giftType` em vez de
+`data.giftType`, eventos `follow`/`share` separados em vez de um único
+`social` com `displayType`) — dá pra fazer, mas exige reescrever os
+handlers de `chat`/`like`/`gift`/`social` deste arquivo.
 
 ## Ponto em aberto: campo de diamantes do presente
 

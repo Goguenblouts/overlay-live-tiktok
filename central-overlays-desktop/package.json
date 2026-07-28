@@ -6,12 +6,15 @@
   "author": "Marcelio",
   "license": "MIT",
   "private": true,
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder"
   },
   "dependencies": {
-    "tiktok-live-connector": "^2.4.2",
+    "tiktok-live-connector": "^2.4.3",
     "ws": "^8.17.0"
   },
   "devDependencies": {

@@ -583,7 +583,14 @@ function renderPainel() {
   // batem com uma condição, no overlay dedicado "Eventos personalizados".
   // ============================================================
   const secaoEventos = criarSecao("eventos");
-  secaoEventos.innerHTML = `<h2 style="font-size:23px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;">Eventos</h2><p style="font-size:13px;color:var(--text-dim);margin:0 0 16px;">Crie ações (card + som) e regras que disparam essas ações quando um evento da live acontecer — igual as automações do TikFinity. Roda no overlay "Eventos personalizados" (copie o link na aba Links).</p>`;
+  secaoEventos.innerHTML = `
+    <div class="evt-header">
+      <div class="evt-header-icone"><i class="fa-solid fa-bolt"></i></div>
+      <div>
+        <div class="evt-header-title">Ações &amp; Eventos</div>
+        <p class="evt-header-sub">Monte automações no formato <strong>gatilho → ação</strong>: crie ações (card + som) e depois regras que disparam essas ações quando algo acontece na live. Roda no overlay "Eventos personalizados" (copie o link na aba Links).</p>
+      </div>
+    </div>`;
 
   // precisa vir ANTES do HTML da caixa "Fila de eventos" logo abaixo, que
   // já lê filaConfigEditando.maximoItens direto no template (sem passar
@@ -601,14 +608,14 @@ function renderPainel() {
   // já estão prontas quando alguém realmente clicar em algo.
   // ------------------------------------------------------------
   const toolbarEventos = document.createElement("div");
-  toolbarEventos.className = "painel-card";
-  toolbarEventos.style.cssText = "padding:12px 16px;border-top:3px solid var(--ic-eventos);margin-bottom:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
+  toolbarEventos.className = "painel-card evt-toolbar";
+  toolbarEventos.style.cssText = "margin-bottom:18px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
   secaoEventos.appendChild(toolbarEventos);
-  const estiloBotaoToolbar = "background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:8px 12px;font-size:12px;cursor:pointer;white-space:nowrap;";
+  const estiloBotaoToolbar = "background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:999px;padding:8px 14px;font-size:12px;cursor:pointer;white-space:nowrap;";
   toolbarEventos.innerHTML = `
-    <input id="evtBusca" type="text" placeholder="Pesquisar ações e regras..." style="flex:1;min-width:180px;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 10px;font-size:12.5px;"/>
-    <button id="evtDesativarTodas" style="${estiloBotaoToolbar}"><i class="fa-solid fa-power-off"></i> Desativar todas as regras</button>
-    <button id="evtTestarTudo" class="btn-cta" style="border-radius:6px;padding:8px 14px;font-size:12px;cursor:pointer;">Testar tudo</button>
+    <div class="evt-search-wrap"><i class="fa-solid fa-magnifying-glass"></i><input id="evtBusca" type="text" placeholder="Pesquisar ações e regras..."/></div>
+    <button id="evtDesativarTodas" style="${estiloBotaoToolbar}"><i class="fa-solid fa-power-off"></i> Desativar todas</button>
+    <button id="evtTestarTudo" class="btn-cta" style="border-radius:999px;padding:8px 16px;font-size:12px;cursor:pointer;"><i class="fa-solid fa-flask"></i> Testar tudo</button>
   `;
 
   let filtroBuscaEventos = "";
@@ -629,36 +636,47 @@ function renderPainel() {
   document.getElementById("evtTestarTudo").addEventListener("click", () => irParaAba("simulador"));
 
   const acoesBox = document.createElement("div");
-  acoesBox.className = "painel-card";
-  acoesBox.style.cssText = "padding:18px;border-top:3px solid var(--ic-eventos);margin-bottom:18px;";
+  acoesBox.className = "painel-card evt-box";
+  acoesBox.style.cssText = "padding:18px;margin-bottom:18px;";
   secaoEventos.appendChild(acoesBox);
   acoesBox.innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Ações</div>
+    <div class="evt-box-header">
+      <div class="evt-box-icone"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+      <div class="evt-box-titulo">Ações</div>
+      <span class="evt-box-count" id="acoesCount">0</span>
+    </div>
     <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Uma ação é o que aparece na tela: um card com ícone, texto e som. Use <code>{nickname}</code> e <code>{valor}</code> no texto pra puxar dados do evento.</p>
     <div id="listaAcoes"></div>
-    <button id="addAcao" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ nova ação</button>
+    <button id="addAcao" class="evt-btn-add"><i class="fa-solid fa-plus"></i> Nova ação</button>
   `;
 
   const variaveisBox = document.createElement("div");
-  variaveisBox.className = "painel-card";
-  variaveisBox.style.cssText = "padding:18px;border-top:3px solid var(--ic-eventos);margin-bottom:18px;";
+  variaveisBox.className = "painel-card evt-box";
+  variaveisBox.style.cssText = "padding:18px;margin-bottom:18px;";
   secaoEventos.appendChild(variaveisBox);
   variaveisBox.innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Variáveis globais</div>
+    <div class="evt-box-header">
+      <div class="evt-box-icone"><i class="fa-solid fa-diamond"></i></div>
+      <div class="evt-box-titulo">Variáveis globais</div>
+    </div>
     <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Contadores/valores que as regras podem ler (nas condições) e alterar (nos efeitos) — ex: "combos_hoje", "meta_diaria". Use <code>{var:nome}</code> no texto de uma ação pra mostrar o valor atual.</p>
     <div id="listaVariaveis"></div>
-    <button id="addVariavel" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ nova variável</button>
+    <button id="addVariavel" class="evt-btn-add"><i class="fa-solid fa-plus"></i> Nova variável</button>
   `;
 
   const eventosBox = document.createElement("div");
-  eventosBox.className = "painel-card";
-  eventosBox.style.cssText = "padding:18px;border-top:3px solid var(--ic-eventos);";
+  eventosBox.className = "painel-card evt-box";
+  eventosBox.style.cssText = "padding:18px;";
   secaoEventos.appendChild(eventosBox);
   eventosBox.innerHTML = `
-    <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Regras (gatilho → condições → ação)</div>
+    <div class="evt-box-header">
+      <div class="evt-box-icone"><i class="fa-solid fa-diagram-project"></i></div>
+      <div class="evt-box-titulo">Regras</div>
+      <span class="evt-box-count" id="regrasCount">0</span>
+    </div>
     <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Quando o gatilho acontecer e as condições baterem, a ação escolhida dispara no overlay. Cada regra pode ter vários grupos de condições combinados por E/OU, prioridade e cooldown próprios.</p>
     <div id="listaEventos"></div>
-    <button id="addEvento" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ nova regra</button>
+    <button id="addEvento" class="evt-btn-add"><i class="fa-solid fa-plus"></i> Nova regra</button>
 
     <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
       <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Fila de eventos</div>
@@ -672,7 +690,7 @@ function renderPainel() {
     </div>
 
     <div style="margin-top:22px;padding-top:18px;border-top:1px solid var(--border);">
-      <button id="salvarEventos" class="btn-cta" style="border-radius:8px;padding:11px 22px;font-size:14px;cursor:pointer;">Salvar automações</button>
+      <button id="salvarEventos" class="btn-cta" style="border-radius:999px;padding:12px 26px;font-size:14px;cursor:pointer;"><i class="fa-solid fa-cloud-arrow-up"></i> Salvar automações</button>
       <span id="salvoEventosMsg" style="margin-left:12px;font-size:13px;color:var(--accent);display:none;font-family:var(--font-mono);">salvo ✓ — atualiza sozinho nos overlays já abertos</span>
     </div>
   `;
@@ -818,10 +836,10 @@ function renderPainel() {
   function renderListaVariaveis() {
     const el = document.getElementById("listaVariaveis");
     if (!variaveisEditando.length) {
-      el.innerHTML = `<p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Nenhuma variável criada ainda.</p>`;
+      el.innerHTML = `<div class="evt-vazio"><i class="fa-solid fa-diamond" style="margin-right:6px;opacity:.7;"></i>Nenhuma variável criada ainda.</div>`;
     } else {
       el.innerHTML = variaveisEditando.map((v, i) => `
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div class="evt-card" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">nome (use {var:nome})</label>
             <input data-i="${i}" data-varcampo="nome" type="text" value="${v.nome}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">tipo</label>
@@ -831,7 +849,7 @@ function renderPainel() {
             </select></div>
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">valor inicial</label>
             <input data-i="${i}" data-varcampo="valorInicial" type="text" value="${v.valorInicial}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
-          <button data-removevariavel="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
+          <button data-removevariavel="${i}" title="Remover" class="evt-btn evt-btn-remover"><i class="fa-regular fa-trash-can"></i></button>
         </div>
       `).join("");
     }
@@ -907,28 +925,36 @@ function renderPainel() {
   // ------------------------------------------------------------
   function renderListaAcoes() {
     const el = document.getElementById("listaAcoes");
+    const contador = document.getElementById("acoesCount");
+    if (contador) contador.textContent = String(acoesEditando.length);
     const termo = (filtroBuscaEventos || "").toLowerCase().trim();
     const itensFiltrados = acoesEditando
       .map((a, i) => ({ a, i }))
       .filter(({ a }) => !termo || a.nome.toLowerCase().includes(termo) || (a.categoria || "").toLowerCase().includes(termo));
     if (!acoesEditando.length) {
-      el.innerHTML = `<p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Nenhuma ação criada ainda.</p>`;
+      el.innerHTML = `<div class="evt-vazio"><i class="fa-solid fa-wand-magic-sparkles" style="margin-right:6px;opacity:.7;"></i>Nenhuma ação criada ainda — comece com um template abaixo.</div>`;
     } else if (!itensFiltrados.length) {
-      el.innerHTML = `<p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Nenhuma ação encontrada pra "${termo}".</p>`;
+      el.innerHTML = `<div class="evt-vazio">Nenhuma ação encontrada pra "${termo}".</div>`;
     } else {
-      el.innerHTML = itensFiltrados.map(({ a, i }) => `
-        <div style="display:flex;align-items:center;gap:12px;background:var(--bg-alt);border:1px solid var(--border);border-left:3px solid ${a.ativo === false ? "var(--text-faint)" : (a.cor || "var(--ic-eventos)")};border-radius:8px;padding:10px 12px;margin-bottom:8px;opacity:${a.ativo === false ? "0.55" : "1"};">
-          <label class="toggle" style="flex-shrink:0;" title="Ativar/desativar ação"><input type="checkbox" data-toggleacao="${i}" ${a.ativo !== false ? "checked" : ""}/><span class="trilha"></span></label>
-          <div style="width:34px;height:34px;flex-shrink:0;border-radius:50%;background:${a.cor || "var(--ic-eventos)"};display:flex;align-items:center;justify-content:center;">${iconeAcaoHtml(a, 16)}</div>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${a.nome}</div>
-            <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.categoria} · ${Math.round((a.duracaoMs || 4000) / 1000)}s${a.som && a.som.ativo ? " · 🔊" : ""}${a.cooldownMs ? ` · cooldown ${Math.round(a.cooldownMs / 1000)}s` : ""}</div>
+      el.innerHTML = itensFiltrados.map(({ a, i }) => {
+        const inativa = a.ativo === false;
+        const cor = a.cor || "var(--ic-eventos)";
+        return `
+        <div class="evt-card${inativa ? " evt-inativo" : ""}" style="--evt-accent:${cor};">
+          <label class="toggle" style="flex-shrink:0;" title="Ativar/desativar ação"><input type="checkbox" data-toggleacao="${i}" ${!inativa ? "checked" : ""}/><span class="trilha"></span></label>
+          <div class="evt-avatar" style="background:${cor};">${iconeAcaoHtml(a, 16)}</div>
+          <div class="evt-info">
+            <div class="evt-nome">${a.nome}<span class="evt-chip">${a.categoria}</span>${inativa ? `<span class="evt-chip evt-chip-inativo">pausada</span>` : ""}</div>
+            <div class="evt-meta">${Math.round((a.duracaoMs || 4000) / 1000)}s na tela${a.som && a.som.ativo ? " · <i class=\"fa-solid fa-volume-high\"></i> som" : ""}${a.cooldownMs ? ` · cooldown ${Math.round(a.cooldownMs / 1000)}s` : ""}</div>
           </div>
-          <button data-editaracao="${i}" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;">Editar</button>
-          <button data-duplicaracao="${i}" title="Duplicar" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;"><i class="fa-regular fa-copy"></i></button>
-          <button data-removeacao="${i}" title="Remover" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;"><i class="fa-regular fa-trash-can"></i></button>
+          <div class="evt-actions">
+            <button data-editaracao="${i}" class="evt-btn evt-btn-editar"><i class="fa-solid fa-pen"></i> Editar</button>
+            <button data-duplicaracao="${i}" title="Duplicar" class="evt-btn evt-btn-duplicar"><i class="fa-regular fa-copy"></i></button>
+            <button data-removeacao="${i}" title="Remover" class="evt-btn evt-btn-remover"><i class="fa-regular fa-trash-can"></i></button>
+          </div>
         </div>
-      `).join("");
+      `;
+      }).join("");
     }
     el.querySelectorAll("[data-toggleacao]").forEach(cb => {
       cb.addEventListener("change", () => {
@@ -1287,6 +1313,8 @@ function renderPainel() {
   // ------------------------------------------------------------
   function renderListaEventos() {
     const el = document.getElementById("listaEventos");
+    const contador = document.getElementById("regrasCount");
+    if (contador) contador.textContent = String(eventosEditando.length);
     const termo = (filtroBuscaEventos || "").toLowerCase().trim();
     const itensFiltrados = eventosEditando
       .map((r, i) => ({ r, i }))
@@ -1296,24 +1324,32 @@ function renderPainel() {
         return r.nome.toLowerCase().includes(termo) || gatilhoLabel.toLowerCase().includes(termo);
       });
     if (!eventosEditando.length) {
-      el.innerHTML = `<p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Nenhuma regra criada ainda.</p>`;
+      el.innerHTML = `<div class="evt-vazio"><i class="fa-solid fa-diagram-project" style="margin-right:6px;opacity:.7;"></i>Nenhuma regra criada ainda — ligue um gatilho a uma ação.</div>`;
     } else if (!itensFiltrados.length) {
-      el.innerHTML = `<p style="font-size:12px;color:var(--text-faint);margin:0 0 8px;">Nenhuma regra encontrada pra "${termo}".</p>`;
+      el.innerHTML = `<div class="evt-vazio">Nenhuma regra encontrada pra "${termo}".</div>`;
     } else {
       el.innerHTML = itensFiltrados.map(({ r, i }) => {
         const acao = acoesEditando.find(a => a.id === r.acaoId);
         const gatilhoLabel = (GATILHOS.find(g => g.id === r.gatilho) || {}).label || r.gatilho;
         const inativa = r.ativo === false;
         return `
-        <div style="display:flex;align-items:center;gap:12px;background:var(--bg-alt);border:1px solid var(--border);border-left:3px solid ${inativa ? "var(--text-faint)" : "var(--ic-eventos)"};border-radius:8px;padding:10px 12px;margin-bottom:8px;opacity:${inativa ? "0.55" : "1"};">
+        <div class="evt-card${inativa ? " evt-inativo" : ""}">
           <label class="toggle" style="flex-shrink:0;" title="Ativar/desativar regra"><input type="checkbox" data-toggleregra="${i}" ${!inativa ? "checked" : ""}/><span class="trilha"></span></label>
-          <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;">${r.nome} <span style="font-weight:400;color:var(--text-dim);font-size:11.5px;">— ${gatilhoLabel}</span></div>
-            <div style="font-size:11px;color:var(--text-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${resumoRegraTexto(r)} → <strong>${acao ? acao.nome : "(sem ação escolhida)"}</strong>${r.cooldownMs ? ` · cooldown ${Math.round(r.cooldownMs / 1000)}s` : ""}${r.prioridade !== 5 ? ` · prioridade ${r.prioridade}` : ""}</div>
+          <div class="evt-avatar" style="background:var(--surface);border:1px solid var(--border);color:var(--ic-eventos);"><i class="fa-solid fa-bolt"></i></div>
+          <div class="evt-info">
+            <div class="evt-nome">${r.nome}${inativa ? `<span class="evt-chip evt-chip-inativo">pausada</span>` : `<span class="evt-chip evt-chip-ativo">ativa</span>`}</div>
+            <div class="evt-flow" style="margin-top:3px;">
+              <span class="evt-chip">${gatilhoLabel}</span>
+              <i class="fa-solid fa-arrow-right evt-flow-seta"></i>
+              <span class="evt-flow-acao">${acao ? acao.nome : "(sem ação escolhida)"}</span>
+            </div>
+            <div class="evt-meta" style="margin-top:3px;">${resumoRegraTexto(r)}${r.cooldownMs ? ` · cooldown ${Math.round(r.cooldownMs / 1000)}s` : ""}${r.prioridade !== 5 ? ` · prioridade ${r.prioridade}` : ""}</div>
           </div>
-          <button data-editarregra="${i}" style="background:var(--accent);color:#fff;border:none;border-radius:6px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;">Editar</button>
-          <button data-duplicarregra="${i}" title="Duplicar" style="background:transparent;color:var(--text-dim);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;"><i class="fa-regular fa-copy"></i></button>
-          <button data-removeevento="${i}" title="Remover" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;"><i class="fa-regular fa-trash-can"></i></button>
+          <div class="evt-actions">
+            <button data-editarregra="${i}" class="evt-btn evt-btn-editar"><i class="fa-solid fa-pen"></i> Editar</button>
+            <button data-duplicarregra="${i}" title="Duplicar" class="evt-btn evt-btn-duplicar"><i class="fa-regular fa-copy"></i></button>
+            <button data-removeevento="${i}" title="Remover" class="evt-btn evt-btn-remover"><i class="fa-regular fa-trash-can"></i></button>
+          </div>
         </div>
       `;
       }).join("");
@@ -2044,8 +2080,8 @@ function renderPainel() {
         <div class="config-subpage" data-subpage="conexao">
           <div style="font-size:14px;font-weight:600;margin-bottom:4px;">Conexão com a live</div>
           <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;line-height:1.5;">
-            O TikFinity é o programa que roda no seu PC e conta curtidas, comentários, presentes e seguidores da sua live. Ele te dá um endereço local (WebSocket) — cole esse endereço aqui embaixo pra os overlays receberem os eventos em tempo real.<br/>
-            Esse campo aceita qualquer fonte compatível: se um dia você usar outro programa (ou seu próprio bridge) em vez do TikFinity, basta trocar o endereço aqui — não precisa ser TikFinity especificamente, contanto que mande os eventos no mesmo formato.
+            É o app <strong>Central de Overlays — Desktop</strong> que conecta direto na sua live do TikTok (só o @ do perfil, sem senha) e conta curtidas, comentários, presentes e seguidores em tempo real. Ele abre um endereço local (WebSocket) — cole esse endereço aqui embaixo pra os overlays receberem os eventos.<br/>
+            Esse campo aceita qualquer fonte compatível: se você preferir usar o TikFinity ou outro programa (ou seu próprio bridge) em vez do app desktop, basta trocar o endereço aqui — contanto que mande os eventos no mesmo formato.
           </p>
           ${campoTexto("wsUrl", "Endereço da conexão (WebSocket)", cfg.tikfinityWsUrl)}
         </div>

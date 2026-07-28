@@ -42,8 +42,9 @@
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
-    border-radius: 10px;
-    transition: border-color 0.15s ease;
+    border-radius: 12px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 10px 24px -18px rgba(0,0,0,0.6);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
   }
   .painel-card:hover { border-color: var(--text-faint); }
   .card-clicavel { cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease; }
@@ -312,4 +313,118 @@
   .anim-pop { animation: popScale 0.28s ease; }
   @media (prefers-reduced-motion: reduce) {
     .secao-conteudo, .linha-ranking-anim, .anim-glow, .anim-pop { animation: none !important; }
+  }
+
+  /* ============================================================
+     Redesign "Ações & Eventos" — visual de automação estilo
+     TikFinity/streaming-dashboard: cabeçalho com selo de ícone,
+     cards com ícone-avatar + glow, badges de status, botões de
+     ação circulares e um fluxo visual "gatilho → ação" nas regras.
+     ============================================================ */
+  .evt-header {
+    display: flex; align-items: flex-start; gap: 14px;
+    margin-bottom: 20px;
+  }
+  .evt-header-icone {
+    width: 46px; height: 46px; flex-shrink: 0; border-radius: 13px;
+    background: linear-gradient(135deg, var(--ic-eventos), #c97a1f);
+    display: flex; align-items: center; justify-content: center;
+    color: #1a1200; font-size: 19px;
+    box-shadow: 0 6px 18px -6px rgba(240,166,60,0.55);
+  }
+  .evt-header-title { font-size: 23px; font-weight: 700; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .evt-header-sub { font-size: 13px; color: var(--text-dim); margin: 0; max-width: 640px; line-height: 1.5; }
+
+  .evt-toolbar {
+    padding: 10px 14px !important;
+    border-top: none !important;
+    border-radius: 12px !important;
+  }
+  .evt-search-wrap { position: relative; flex: 1; min-width: 200px; }
+  .evt-search-wrap i {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--text-faint); font-size: 12.5px; pointer-events: none;
+  }
+  .evt-search-wrap input {
+    width: 100%; box-sizing: border-box; background: var(--bg-alt); border: 1px solid var(--border);
+    color: var(--text); border-radius: 999px; padding: 9px 14px 9px 32px; font-size: 12.5px;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  .evt-search-wrap input:focus-visible { outline: none; border-color: var(--ic-eventos); background: var(--surface-hover); }
+
+  .evt-box { position: relative; overflow: hidden; }
+  .evt-box-header { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .evt-box-icone {
+    width: 30px; height: 30px; flex-shrink: 0; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+    background: rgba(240,166,60,0.14); color: var(--ic-eventos);
+  }
+  .evt-box-titulo { font-size: 14.5px; font-weight: 700; }
+  .evt-box-count {
+    margin-left: auto; font-family: var(--font-mono); font-size: 11px; color: var(--text-faint);
+    background: var(--bg-alt); border: 1px solid var(--border); border-radius: 999px; padding: 2px 9px;
+  }
+
+  .evt-card {
+    display: flex; align-items: center; gap: 13px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.025), transparent), var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 11px 13px;
+    margin-bottom: 9px;
+    transition: border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
+  }
+  .evt-card:hover {
+    border-color: var(--evt-accent, var(--ic-eventos));
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px -14px var(--evt-accent, var(--ic-eventos));
+  }
+  .evt-card.evt-inativo { opacity: 0.5; }
+  .evt-avatar {
+    width: 38px; height: 38px; flex-shrink: 0; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.08) inset, 0 4px 14px -6px var(--evt-accent, var(--ic-eventos));
+  }
+  .evt-info { flex: 1; min-width: 0; }
+  .evt-nome { font-size: 13.5px; font-weight: 700; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+  .evt-meta { font-size: 11px; color: var(--text-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+  .evt-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: var(--font-mono); font-size: 10.5px; font-weight: 600;
+    color: var(--text-dim); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 9px; white-space: nowrap;
+  }
+  .evt-chip-ativo { color: #28C48A; border-color: rgba(40,196,138,0.35); background: rgba(40,196,138,0.1); }
+  .evt-chip-inativo { color: var(--text-faint); }
+  .evt-flow { display: flex; align-items: center; gap: 6px; font-size: 11px; }
+  .evt-flow-seta { color: var(--text-faint); font-size: 10px; }
+  .evt-flow-acao { color: var(--text); font-weight: 700; }
+
+  .evt-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .evt-btn {
+    width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+    background: transparent; border: 1px solid var(--border); color: var(--text-dim);
+    display: inline-flex; align-items: center; justify-content: center; font-size: 12.5px; cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .evt-btn:hover { transform: none; }
+  .evt-btn-editar { background: var(--accent); border-color: var(--accent); color: #fff; width: auto; padding: 0 13px; font-size: 12px; font-weight: 700; gap: 6px; }
+  .evt-btn-editar:hover { filter: brightness(1.1); }
+  .evt-btn-duplicar:hover { border-color: var(--ic-previa); color: var(--ic-previa); }
+  .evt-btn-remover:hover { border-color: #e8794f; color: #e8794f; }
+
+  .evt-vazio {
+    text-align: center; padding: 26px 14px; color: var(--text-faint); font-size: 12.5px;
+    border: 1px dashed var(--border); border-radius: 11px;
+  }
+  .evt-btn-add {
+    margin-top: 4px; width: 100%; background: transparent; color: var(--text-dim);
+    border: 1.5px dashed var(--border); border-radius: 10px; padding: 11px; font-size: 12.5px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px;
+    transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  }
+  .evt-btn-add:hover { border-color: var(--ic-eventos); color: var(--ic-eventos); background: rgba(240,166,60,0.06); transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .evt-card:hover { transform: none; }
   }

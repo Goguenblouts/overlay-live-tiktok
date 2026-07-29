@@ -29,12 +29,17 @@ let dbRefReset = null;
 // toda vez que abre uma live nova numa tela que não tinha os dados salvos.
 let dbRefPremios = null;
 let dbRefRanking = null;
+// histórico diário de pontos por espectador — separado de premios/ranking
+// (que só guardam o TOTAL acumulado do mês) pra dar pra ver quanto cada
+// um ganhou EM CADA DIA. Zera junto com o resto na virada do mês.
+let dbRefHistorico = null;
 try {
   firebase.initializeApp(firebaseConfig);
   dbRefConfig = firebase.database().ref("overlay_tiktok/config");
   dbRefReset = firebase.database().ref("overlay_tiktok/resetTrigger");
   dbRefPremios = firebase.database().ref("overlay_tiktok/premios");
   dbRefRanking = firebase.database().ref("overlay_tiktok/ranking");
+  dbRefHistorico = firebase.database().ref("overlay_tiktok/historico");
 } catch (e) {
   console.warn("[firebase] não consegui iniciar o sync automático:", e);
 }

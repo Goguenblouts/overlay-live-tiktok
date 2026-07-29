@@ -2111,6 +2111,11 @@ function renderPainel() {
           </div>
           <p id="manualMsg" style="font-size:12px;color:var(--accent);margin:0 0 14px;display:none;font-family:var(--font-mono);"></p>
           <div id="manualListaRecentes" style="font-size:12px;color:var(--text-dim);margin-bottom:16px;"></div>
+          <div style="border-top:1px solid var(--border);padding-top:14px;margin-bottom:16px;">
+            <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Histórico diário</div>
+            <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 10px;">Quanto o espectador escolhido acima ganhou em cada dia deste mês — soma TODAS as fontes (mensagem, like, presente, seguidor, compartilhar e manual), não só os pontos manuais. Zera junto com o resto na virada do mês.</p>
+            <div id="manualHistoricoDiario" style="font-size:12px;color:var(--text-faint);">Escolha um espectador acima pra ver o histórico dele.</div>
+          </div>
           <div id="manualDuplicadosWrap" style="display:none;border-top:1px solid var(--border);padding-top:14px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px;color:#e0637a;">Espectadores duplicados encontrados</div>
             <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 10px;">Aconteceu de um nome digitado não bater 100% com o nickname real (emoji, espaço, etc.) e criar um registro separado. Clique em "Mesclar" pra juntar os pontos no espectador de verdade e apagar o duplicado.</p>
@@ -2194,6 +2199,46 @@ function renderPainel() {
     }).catch(() => {});
   }
 
+  // mostra, pro espectador escolhido no dropdown, quanto ele ganhou em
+  // cada dia deste mês (lê direto de dbRefHistorico — ver registrarPontosGanhos
+  // em js-06-overlay-metas.js, que é quem escreve isso a cada ponto ganho).
+  function renderHistoricoDiarioManual(userId) {
+    const el = document.getElementById("manualHistoricoDiario");
+    if (!el) return;
+    if (!userId || userId === "novo") {
+      el.innerHTML = "Escolha um espectador acima pra ver o histórico dele.";
+      return;
+    }
+    if (!dbRefHistorico) { el.innerHTML = "Sincronização com a nuvem indisponível."; return; }
+    el.innerHTML = "Carregando...";
+    dbRefHistorico.child(userId).once("value").then(snap => {
+      const dados = snap.val() || {};
+      const dias = Object.entries(dados)
+        .filter(([chave]) => /^\d{4}-\d{2}-\d{2}$/.test(chave))
+        .map(([data, v]) => ({ data, total: (v && v.total) || 0 }))
+        .filter(d => d.total)
+        .sort((a, b) => b.data.localeCompare(a.data));
+      if (!dias.length) {
+        el.innerHTML = "Esse espectador ainda não tem histórico neste mês.";
+        return;
+      }
+      const maior = Math.max(...dias.map(d => d.total));
+      el.innerHTML = dias.map(d => {
+        const largura = Math.max(6, Math.round((d.total / maior) * 100));
+        const [ano, mes, dia] = d.data.split("-");
+        return `
+          <div style="display:flex;align-items:center;gap:10px;padding:4px 0;">
+            <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);width:38px;flex-shrink:0;">${dia}/${mes}</span>
+            <div style="flex:1;background:var(--bg-alt);border-radius:4px;overflow:hidden;height:14px;">
+              <div style="width:${largura}%;height:100%;background:var(--ic-eventos);border-radius:4px;"></div>
+            </div>
+            <span style="font-family:var(--font-mono);font-size:11.5px;color:var(--text);width:56px;text-align:right;flex-shrink:0;">${d.total} pts</span>
+          </div>
+        `;
+      }).join("");
+    }).catch(() => { el.innerHTML = "Não consegui carregar o histórico agora."; });
+  }
+
   // popula o <select> com os espectadores DE VERDADE (vindos da nuvem) —
   // escolher da lista em vez de digitar elimina o risco de criar
   // duplicado por causa de emoji/espaço/maiúscula diferente no nome.
@@ -2264,6 +2309,7 @@ function renderPainel() {
   document.getElementById("manualNickSelect").addEventListener("change", () => {
     const val = document.getElementById("manualNickSelect").value;
     document.getElementById("manualNickNovoWrap").style.display = val === "novo" ? "block" : "none";
+    renderHistoricoDiarioManual(val);
   });
 
   document.getElementById("manualAdicionar").addEventListener("click", () => {
@@ -2276,7 +2322,7 @@ function renderPainel() {
     if (!escolha) { alert("Escolhe um espectador na lista."); return; }
     if (!pontos) { alert("Digita quantos pontos (diferente de zero)."); return; }
 
-    const finalizar = (nomeExibido) => {
+    const finalizar = (nomeExibido, userId) => {
       btnAdicionar.disabled = false;
       btnAdicionar.textContent = "Adicionar";
       const msg = document.getElementById("manualMsg");
@@ -2288,6 +2334,7 @@ function renderPainel() {
       renderListaRecentesManual();
       carregarOpcoesManual();
       carregarDuplicadosManual();
+      if (userId) renderHistoricoDiarioManual(userId);
     };
 
     btnAdicionar.disabled = true;
@@ -2300,10 +2347,10 @@ function renderPainel() {
         btnAdicionar.textContent = "Adicionar";
         return;
       }
-      adicionarPontosManualmente(nick, pontos, () => finalizar(nick));
+      adicionarPontosManualmente(nick, pontos, (userId) => finalizar(nick, userId));
     } else {
       const nomeExibido = (select.options[select.selectedIndex].textContent || "").split(" — ")[0];
-      adicionarPontosPorUserId(escolha, pontos, () => finalizar(nomeExibido));
+      adicionarPontosPorUserId(escolha, pontos, (userId) => finalizar(nomeExibido, userId));
     }
   });
 
@@ -2317,6 +2364,7 @@ function renderPainel() {
     // antigos de lá assim que o sync roda de novo.
     if (dbRefPremios) dbRefPremios.remove().catch(() => {});
     if (dbRefRanking) dbRefRanking.remove().catch(() => {});
+    if (dbRefHistorico) dbRefHistorico.remove().catch(() => {});
     if (dbRefReset) {
       const agora = Date.now();
       localStorage.setItem(chaveEspectadores("ultimoResetAplicado"), String(agora));
@@ -2335,7 +2383,27 @@ function renderPainel() {
   }
 
   let tiersEditando = structuredClone(cfg.tiers);
-  let faixasPresenteEditando = structuredClone(cfg.valores.faixasPresente || CONFIG_PADRAO.valores.faixasPresente);
+
+  // Corrige/normaliza uma lista de faixas de presente que pode ter vindo
+  // bagunçada (salva fora de ordem, ou com a última faixa sem o "ate:
+  // null" que ela deveria ter) — bug real que achamos: se a lista fica
+  // fora de ordem crescente, a faixa errada é escolhida pra presentes de
+  // tamanho médio e os pontos saem muito acima (ou abaixo) do esperado.
+  // Ordena as faixas com teto numérico e garante que só a ÚLTIMA fica
+  // "sem teto" (pega tudo que sobrar acima da maior faixa configurada).
+  function normalizarFaixasPresente(faixas) {
+    const lista = ((faixas && faixas.length) ? faixas : CONFIG_PADRAO.valores.faixasPresente).map(f => ({
+      ate: f.ate == null ? null : Number(f.ate),
+      pontos: Number(f.pontos) || 0,
+    }));
+    const comTeto = lista.filter(f => f.ate != null).sort((a, b) => a.ate - b.ate);
+    const semTeto = lista.filter(f => f.ate == null);
+    const ultima = semTeto[semTeto.length - 1] || comTeto[comTeto.length - 1] || { ate: null, pontos: 10 };
+    const resto = comTeto.filter(f => f !== ultima);
+    return [...resto, { ate: null, pontos: ultima.pontos }];
+  }
+
+  let faixasPresenteEditando = normalizarFaixasPresente(cfg.valores.faixasPresente);
 
   // Editor de faixas de presente: usado pelos modais de "metas" e
   // "ranking" (compartilham a mesma pontuação). Cada faixa vale por
@@ -2616,7 +2684,7 @@ function renderPainel() {
       mensagem: Number(document.getElementById("vMensagem").value),
       likeACada: Number(document.getElementById("vLikeACada").value),
       likeValor: Number(document.getElementById("vLikeValor").value),
-      faixasPresente: faixasPresenteEditando,
+      faixasPresente: normalizarFaixasPresente(faixasPresenteEditando),
       presenteMinimo: Number(document.getElementById("vPresenteMinimo").value),
       seguidor: Number(document.getElementById("vSeguidor").value),
       compartilhamento: Number(document.getElementById("vCompartilhar").value),
@@ -2719,7 +2787,7 @@ function renderPainel() {
       montarEditorTiers();
     }
     if (overlayId === "metas" || overlayId === "ranking") {
-      faixasPresenteEditando = structuredClone(cfgAtual.valores.faixasPresente || CONFIG_PADRAO.valores.faixasPresente);
+      faixasPresenteEditando = normalizarFaixasPresente(cfgAtual.valores.faixasPresente);
       montarEditorFaixasPresente();
     }
     if (overlayId === "metas") wireSomRow(backdrop, "premio", "somVolumeModal");

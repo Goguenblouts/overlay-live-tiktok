@@ -85,6 +85,25 @@ function incrementarPontosNaNuvem(dbRef, userId, caminho, delta, nickname) {
   try { dbRef.child(userId).update(atualizacoes).catch(() => {}); } catch (e) {}
 }
 
+// ------------------------------------------------------------
+// Histórico diário de pontos: além do total do mês (premios[userId]),
+// guarda também quanto cada espectador ganhou EM CADA DIA — pra dar pra
+// ver, na aba Config > Pontos manuais, um histórico tipo "dia 28: 150
+// pontos, dia 29: 40 pontos". Zera junto com tudo na virada do mês
+// (checarResetAutomaticoMensal também limpa o histórico).
+// ------------------------------------------------------------
+function chaveDiaHoje() { return new Date().toISOString().slice(0, 10); } // "2026-07-29"
+
+// soma pontos no total do mês (premios[userId].fontes) E no histórico do
+// dia de hoje, numa chamada só — usado em todo lugar que dá pontos "de
+// verdade" (evento real da live ou pontos manuais). NÃO usar em
+// mesclarDuplicadoManual: ali os pontos só estão trocando de dono, não
+// sendo ganhos agora, então não deve contar de novo no histórico de hoje.
+function registrarPontosGanhos(userId, fonte, pontos, nickname) {
+  incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/" + fonte, pontos, nickname);
+  incrementarPontosNaNuvem(dbRefHistorico, userId, chaveDiaHoje() + "/total", pontos, nickname);
+}
+
 function carregarRanking() {
   try { return JSON.parse(localStorage.getItem(chaveEspectadores("rankingUsuarios")) || "{}"); }
   catch (e) { return {}; }
@@ -123,7 +142,7 @@ function adicionarPontosManualmente(nick, pontos, aoTerminar) {
   const nickLimpo = String(nick || "").trim();
   encontrarUserIdNaNuvemPorNick(nickLimpo, (userIdAchado) => {
     const userId = userIdAchado || ("manual_" + (normalizarNickParaBusca(nickLimpo).replace(/[^a-z0-9_]/g, "") || "espectador") + "_" + Date.now());
-    incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/manual", pontos, nickLimpo);
+    registrarPontosGanhos(userId, "manual", pontos, nickLimpo);
     incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, nickLimpo);
     if (aoTerminar) aoTerminar(userId);
   });
@@ -133,7 +152,7 @@ function adicionarPontosManualmente(nick, pontos, aoTerminar) {
 // sem chance nenhuma de criar duplicado.
 function adicionarPontosPorUserId(userId, pontos, aoTerminar) {
   incrementarPontosNaNuvem(dbRefRanking, userId, "pontos", pontos, null);
-  incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/manual", pontos, null);
+  registrarPontosGanhos(userId, "manual", pontos, null);
   if (aoTerminar) aoTerminar(userId);
 }
 // junta um espectador "fantasma" (criado por engano, nome não bateu 100%)
@@ -168,9 +187,21 @@ function mesclarDuplicadoManual(userIdReal, userIdFantasma, pontosFantasma, aoTe
 function pontosDoPresente(valorBase, cfg) {
   const v = cfg.valores;
   const diamantes = Number(valorBase) || 0;
-  const faixas = (v.faixasPresente && v.faixasPresente.length) ? v.faixasPresente : CONFIG_PADRAO.valores.faixasPresente;
-  const faixa = faixas.find(f => f.ate == null || diamantes <= f.ate) || faixas[faixas.length - 1];
-  const proporcional = diamantes * (faixa ? Number(faixa.pontos) || 0 : 0);
+  const faixasBrutas = (v.faixasPresente && v.faixasPresente.length) ? v.faixasPresente : CONFIG_PADRAO.valores.faixasPresente;
+  // BUG corrigido: antes essa função pegava a PRIMEIRA faixa da lista cujo
+  // "ate" bate, na ordem em que foi salva — então se o editor de Faixas de
+  // presente (Config) salvasse as faixas fora de ordem (ex: usuário
+  // reordenou/editou e ficou [{ate:1},{ate:99},{ate:10}] em vez de
+  // [{ate:1},{ate:10},{ate:99}]), presentes de tamanho médio caíam na
+  // faixa errada — dando pontos muito acima (ou abaixo) do esperado.
+  // Agora a lista é normalizada (ate:null vira Infinity) e ORDENADA por
+  // teto crescente antes de escolher a faixa, então o resultado é sempre
+  // certo independente da ordem em que as faixas foram salvas.
+  const faixasOrdenadas = faixasBrutas
+    .map(f => ({ ate: f.ate == null ? Infinity : Number(f.ate), pontos: Number(f.pontos) || 0 }))
+    .sort((a, b) => a.ate - b.ate);
+  const faixa = faixasOrdenadas.find(f => diamantes <= f.ate) || faixasOrdenadas[faixasOrdenadas.length - 1];
+  const proporcional = diamantes * (faixa ? faixa.pontos : 0);
   const minimo = v.presenteMinimo != null ? v.presenteMinimo : 10;
   return Math.max(minimo, proporcional);
 }
@@ -201,6 +232,7 @@ function checarResetAutomaticoMensal() {
     // "on value") traz os pontos antigos de volta um instante depois.
     if (dbRefPremios && !modoPreview) dbRefPremios.set(premiosAtual).catch(() => {});
     if (dbRefRanking && !modoPreview) dbRefRanking.remove().catch(() => {});
+    if (dbRefHistorico && !modoPreview) dbRefHistorico.remove().catch(() => {});
     resetou = true;
   }
   localStorage.setItem(chaveMesReferencia(), mesAtual);
@@ -304,26 +336,26 @@ function renderMetas() {
       if (valorBase !== null) {
         const pts = pontosDoPresente(valorBase, cfg);
         u.fontes.presente += pts;
-        incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/presente", pts, nickname);
+        registrarPontosGanhos(userId, "presente", pts, nickname);
       }
     }
     if (tipo === "chat" || tipo === "comment") {
       u.fontes.mensagem += v.mensagem;
-      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/mensagem", v.mensagem, nickname);
+      registrarPontosGanhos(userId, "mensagem", v.mensagem, nickname);
     }
     if (tipo === "like") {
       const qtd = data.likeCount ?? data.count ?? 1;
       const ganhos = Math.floor(qtd / v.likeACada) * v.likeValor;
       u.fontes.like += ganhos;
-      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/like", ganhos, nickname);
+      registrarPontosGanhos(userId, "like", ganhos, nickname);
     }
     if (tipo === "follow" || tipo === "member") {
       u.fontes.seguidor += v.seguidor;
-      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/seguidor", v.seguidor, nickname);
+      registrarPontosGanhos(userId, "seguidor", v.seguidor, nickname);
     }
     if (tipo === "share") {
       u.fontes.compartilhamento += v.compartilhamento;
-      incrementarPontosNaNuvem(dbRefPremios, userId, "fontes/compartilhamento", v.compartilhamento, nickname);
+      registrarPontosGanhos(userId, "compartilhamento", v.compartilhamento, nickname);
     }
 
     // salva local só como cache/fallback — quem manda de verdade agora é a

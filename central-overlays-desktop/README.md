@@ -22,6 +22,26 @@ mudar esse serviço interno a qualquer momento e quebrar a conexão —
 nesse caso, normalmente uma atualização da biblioteca (`npm update`)
 resolve. A licença dela é AGPL-3.0.
 
+## Atualização automática (igual um programa normal)
+
+A partir de agora, você **não precisa mais gerar o instalador na mão**
+a cada correção. Um workflow do GitHub Actions
+(`.github/workflows/build-desktop.yml`) builda o app sozinho toda vez
+que algo muda em `central-overlays-desktop/` ou no site, e publica o
+instalador como uma nova versão em **Releases**, na página do
+repositório no GitHub.
+
+O próprio app (via `electron-updater`) checa essa mesma página ao
+abrir e a cada 30 minutos: se tiver uma versão mais nova, baixa
+sozinho em segundo plano e pergunta se pode reiniciar pra aplicar —
+sem precisar baixar ZIP, copiar arquivo nem rodar `npm run dist` de
+novo.
+
+**Só a primeira instalação é manual:** baixe o instalador mais
+recente na aba **Releases** do repositório
+(`github.com/Goguenblouts/overlay-live-tiktok/releases`), rode ele
+uma vez, e daí em diante as atualizações chegam sozinhas.
+
 ## Chave de API grátis (Euler Stream) — necessária hoje em dia
 
 A lib `tiktok-live-connector` delega a assinatura do handshake com o

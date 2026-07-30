@@ -4,7 +4,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("central", {
-    conectar: (username) => ipcRenderer.invoke("conectar-tiktok", username),
+    conectar: (dados) => ipcRenderer.invoke("conectar-tiktok", dados),
     desconectar: () => ipcRenderer.invoke("desconectar-tiktok"),
     lerConfig: () => ipcRenderer.invoke("ler-config"),
     lerStatus: () => ipcRenderer.invoke("ler-status"),

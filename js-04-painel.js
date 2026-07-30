@@ -791,6 +791,29 @@ function renderPainel() {
     <button id="addVariavel" class="evt-btn-add"><i class="fa-solid fa-plus"></i> Nova variável</button>
   `;
 
+  // ------------------------------------------------------------
+  // Grade de gatilhos (estilo "preset" do StreamToEarn): em vez de
+  // montar uma regra do zero, clica no quadradinho do gatilho (ou do
+  // presente) e já cria (ou abre, se já existir) a regra ligada a ele.
+  // Continua usando o mesmo motor de condições e a mesma lista de
+  // "Regras" completa logo abaixo — é só um atalho visual por cima.
+  // ------------------------------------------------------------
+  const gradeBox = document.createElement("div");
+  gradeBox.className = "painel-card evt-box";
+  gradeBox.style.cssText = "padding:18px;margin-bottom:18px;";
+  secaoEventos.appendChild(gradeBox);
+  gradeBox.innerHTML = `
+    <div class="evt-box-header">
+      <div class="evt-box-icone"><i class="fa-solid fa-grip"></i></div>
+      <div class="evt-box-titulo">Grade de gatilhos</div>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Clique num quadradinho pra criar (ou editar) a regra daquele gatilho na hora — sem montar do zero. Quadradinho colorido = já tem regra configurada.</p>
+    <div id="gradeOutros" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-bottom:14px;"></div>
+    <div class="evt-search-wrap" style="margin-bottom:10px;"><i class="fa-solid fa-magnifying-glass"></i><input id="gradeBuscaPresente" type="text" placeholder="Pesquisar presente..."/></div>
+    <div id="gradePresentes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;max-height:340px;overflow-y:auto;padding-right:4px;"></div>
+  `;
+  document.getElementById("gradeBuscaPresente").addEventListener("input", () => renderGradeGatilhos());
+
   const eventosBox = document.createElement("div");
   eventosBox.className = "painel-card evt-box";
   eventosBox.style.cssText = "padding:18px;";
@@ -1046,6 +1069,81 @@ function renderPainel() {
   let eventosEditando = (cfg.automacoes.eventos || []).map(normalizarRegra);
 
   // ------------------------------------------------------------
+  // Grade de gatilhos — lógica. Os 4 gatilhos "especiais" (sem presente
+  // específico) mais a grade de presentes (vinda de js-12-gifts-catalogo.js).
+  // Cada quadradinho representa NO MÁXIMO uma regra: presente casa por
+  // condicao.campo==="nomePresente", os especiais casam só pelo gatilho.
+  // ------------------------------------------------------------
+  const GATILHOS_ESPECIAIS = [
+    { gatilho: "mensagem", emoji: "💬", label: "Mensagem" },
+    { gatilho: "like", emoji: "❤️", label: "Like" },
+    { gatilho: "seguidor", emoji: "⭐", label: "Seguidor" },
+    { gatilho: "compartilhamento", emoji: "🔗", label: "Compartilhar" },
+  ];
+
+  function acharRegraDoGatilho(gatilho, nomePresente) {
+    return eventosEditando.findIndex(r => {
+      if (r.gatilho !== gatilho) return false;
+      if (gatilho === "presente") {
+        return !!(r.condicao && r.condicao.campo === "nomePresente" && r.condicao.valor === nomePresente);
+      }
+      return true;
+    });
+  }
+
+  function abrirOuCriarRegraDaGrade(gatilho, nomePresente) {
+    const idx = acharRegraDoGatilho(gatilho, nomePresente);
+    if (idx >= 0) { abrirModalEditarRegra(idx); return; }
+    if (!acoesEditando.length) {
+      alert('Crie uma ação primeiro (caixa "Ações" acima) — a regra precisa de uma ação pra disparar.');
+      return;
+    }
+    const especial = GATILHOS_ESPECIAIS.find(g => g.gatilho === gatilho);
+    const nome = nomePresente ? ("Presente: " + nomePresente) : (especial ? especial.label : gatilho);
+    const nova = normalizarRegra({
+      nome,
+      gatilho,
+      condicao: nomePresente ? { campo: "nomePresente", operador: "igual", valor: nomePresente } : { campo: "", operador: "", valor: "" },
+      acaoId: acoesEditando[0].id,
+    });
+    eventosEditando.push(nova);
+    renderListaEventos();
+    abrirModalEditarRegra(eventosEditando.length - 1);
+  }
+
+  function renderGradeGatilhos() {
+    const elOutros = document.getElementById("gradeOutros");
+    const elPresentes = document.getElementById("gradePresentes");
+    if (!elOutros || !elPresentes) return; // caixa ainda não montada nessa passada
+    function tileHtml(gatilho, emoji, label, nomePresente) {
+      const idx = acharRegraDoGatilho(gatilho, nomePresente);
+      const configurada = idx >= 0;
+      const ativa = configurada && eventosEditando[idx].ativo !== false;
+      const tituloExtra = configurada ? (ativa ? " — regra ativa (clique pra editar)" : " — regra pausada (clique pra editar)") : " — clique pra criar uma regra";
+      return `
+        <button type="button" class="grade-tile${configurada ? " grade-tile-config" : ""}${configurada && !ativa ? " grade-tile-pausada" : ""}"
+          data-grade-gatilho="${gatilho}" data-grade-presente="${(nomePresente || "").replace(/"/g, "&quot;")}"
+          title="${label}${tituloExtra}">
+          <span class="grade-tile-emoji">${emoji}</span>
+          <span class="grade-tile-label">${label}</span>
+          ${configurada ? `<span class="grade-tile-dot" style="background:${ativa ? "var(--ic-eventos)" : "var(--text-faint)"};"></span>` : ""}
+        </button>`;
+    }
+    elOutros.innerHTML = GATILHOS_ESPECIAIS.map(g => tileHtml(g.gatilho, g.emoji, g.label, "")).join("");
+    const campoBusca = document.getElementById("gradeBuscaPresente");
+    const termo = (campoBusca ? campoBusca.value : "").toLowerCase().trim();
+    const presentes = termo ? CATALOGO_PRESENTES_TIKTOK.filter(p => p.nome.toLowerCase().includes(termo)) : CATALOGO_PRESENTES_TIKTOK;
+    elPresentes.innerHTML = presentes.length
+      ? presentes.map(p => tileHtml("presente", p.emoji, p.nome, p.nome)).join("")
+      : `<div class="evt-vazio">Nenhum presente encontrado pra "${termo}".</div>`;
+    [elOutros, elPresentes].forEach(container => {
+      container.querySelectorAll("[data-grade-gatilho]").forEach(btn => {
+        btn.addEventListener("click", () => abrirOuCriarRegraDaGrade(btn.dataset.gradeGatilho, btn.dataset.gradePresente || ""));
+      });
+    });
+  }
+
+  // ------------------------------------------------------------
   // Lista de ações: um resumo (ícone + nome + categoria) por linha,
   // com Editar (abre o modal completo), Duplicar e Remover. O editor
   // rico fica todo dentro do modal, pra não lotar essa lista.
@@ -1109,6 +1207,7 @@ function renderPainel() {
         renderListaEventos();
       });
     });
+    renderGradeGatilhos();
   }
   renderListaAcoes();
 
@@ -1504,6 +1603,7 @@ function renderPainel() {
         renderListaEventos();
       });
     });
+    renderGradeGatilhos();
   }
   renderListaEventos();
   document.getElementById("addEvento").addEventListener("click", () => {

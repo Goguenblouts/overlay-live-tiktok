@@ -15,6 +15,11 @@
    a conexão pode falhar com "requires a Business plan". Cole a
    chave no campo "Chave de API" da janela "Conexão com a live".
 
+   Se atualiza sozinho: toda mudança publicada gera um instalador
+   novo automaticamente (via GitHub Actions) e o app checa por
+   versões novas ao abrir, baixando e instalando sem precisar
+   baixar/reinstalar na mão de novo. Ver configurarAtualizacaoAutomatica().
+
    Duas janelas abrem ao iniciar o app:
    - Painel (index.html): a Central de Overlays de sempre.
    - Conexão com a live: janela pequena pra digitar o @ do TikTok
@@ -22,10 +27,11 @@
      TikFinity/tiktok-live-connector não têm nada a ver com a
      configuração de overlays em si.
    ============================================================ */
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const { WebSocketServer } = require("ws");
+const { autoUpdater } = require("electron-updater");
 
 const PORTA_WS = 21213;
 // Em desenvolvimento (npm start), index.html/styles.css/js-*.js ficam na
@@ -249,6 +255,49 @@ function atualizarStatus(status, mensagem) {
 }
 
 /* ------------------------------------------------------------
+   Atualização automática — igual qualquer programa "de verdade".
+   Cada push na pasta central-overlays-desktop/ (ou nos arquivos do
+   site) gera sozinho, via GitHub Actions, um instalador novo e o
+   publica como "Release" no repositório. O electron-updater checa
+   essa mesma página de Releases: se a versão de lá for mais nova
+   que a instalada, baixa em segundo plano e, quando terminar,
+   pergunta se pode reiniciar pra aplicar. Não precisa reinstalar
+   nada na mão depois da primeira vez.
+   ------------------------------------------------------------ */
+function configurarAtualizacaoAutomatica() {
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("[update] versão nova disponível:", info.version, "— baixando em segundo plano...");
+  });
+  autoUpdater.on("update-not-available", () => {
+    console.log("[update] já está na versão mais recente.");
+  });
+  autoUpdater.on("error", (erro) => {
+    // Falha ao checar (ex: sem internet) não deve travar o app —
+    // só loga e segue usando a versão já instalada normalmente.
+    console.warn("[update] não consegui checar atualização:", erro ? erro.toString() : erro);
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    dialog.showMessageBox({
+      type: "info",
+      buttons: ["Reiniciar agora", "Depois"],
+      defaultId: 0,
+      title: "Atualização pronta",
+      message: `Uma versão nova da Central de Overlays (${info.version}) foi baixada. Reiniciar agora pra aplicar?`,
+    }).then((resultado) => {
+      if (resultado.response === 0) autoUpdater.quitAndInstall();
+    });
+  });
+
+  // Checa uma vez ao abrir, e depois a cada 30 minutos (útil pra
+  // quem deixa o app aberto o dia inteiro numa live longa).
+  autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 30 * 60 * 1000);
+}
+
+/* ------------------------------------------------------------
    Janelas
    ------------------------------------------------------------ */
 function criarJanelaPainel() {
@@ -289,6 +338,7 @@ app.whenReady().then(() => {
   iniciarServidorWebSocket();
   criarJanelaPainel();
   criarJanelaConexao();
+  configurarAtualizacaoAutomatica();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

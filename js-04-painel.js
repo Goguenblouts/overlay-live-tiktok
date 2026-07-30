@@ -301,9 +301,136 @@ function renderPainel() {
   sidebar.appendChild(btnManuais);
   const infoBox = document.createElement("div");
   infoBox.className = "sidebar-sync";
-  infoBox.title = "Sincronia instantânea: salva aqui, atualiza sozinho em todo overlay já aberto no OBS — sem recopiar link.";
-  infoBox.innerHTML = `<i class="fa-solid fa-bolt"></i>`;
   sidebar.appendChild(infoBox);
+
+  if (window.central) {
+    // Rodando dentro do app desktop — este ícone vira o botão de
+    // "Conexão com a live" (substitui a antiga janela popup separada).
+    infoBox.classList.add("clicavel");
+    infoBox.title = "Conexão com a live";
+    infoBox.innerHTML = `<i class="fa-solid fa-tower-broadcast"></i>`;
+    montarBotaoConexaoLive(infoBox);
+  } else {
+    // Rodando como site normal (sem o app desktop) — mantém o ícone
+    // original, só como indicador de sincronia instantânea.
+    infoBox.title = "Sincronia instantânea: salva aqui, atualiza sozinho em todo overlay já aberto no OBS — sem recopiar link.";
+    infoBox.innerHTML = `<i class="fa-solid fa-bolt"></i>`;
+  }
+
+  // -------- botão "Conexão com a live" (só existe dentro do app desktop) --------
+  // Abre um popover ancorado no próprio ícone, com os mesmos campos que
+  // antes ficavam numa janela separada (control.html) — @ do perfil,
+  // chave de API do Euler Stream, conectar/desconectar e status ao vivo.
+  function montarBotaoConexaoLive(botaoEl) {
+    let popover = null;
+    let refsPopover = null;
+    let ultimoStatus = { status: "desconectado", mensagem: "Ainda não conectado." };
+
+    const ROTULOS_STATUS = {
+      conectado: "🔴 Ao vivo agora",
+      aguardando: "⏳ Aguardando a live começar",
+      conectando: "Conectando...",
+      erro: "⚠️ Erro",
+      "erro-servidor": "⚠️ Erro",
+      desconectado: "Desconectado",
+    };
+    const CORES_STATUS = {
+      conectado: "#28C48A",
+      aguardando: "#e8b339",
+      conectando: "var(--text-dim)",
+      erro: "#e0637a",
+      "erro-servidor": "#e0637a",
+    };
+
+    function aplicarEstadoIcone(dados) {
+      botaoEl.classList.remove("estado-conectado", "estado-aguardando", "estado-erro");
+      if (dados.status === "conectado") botaoEl.classList.add("estado-conectado");
+      else if (dados.status === "aguardando" || dados.status === "conectando") botaoEl.classList.add("estado-aguardando");
+      else if (dados.status === "erro" || dados.status === "erro-servidor") botaoEl.classList.add("estado-erro");
+    }
+
+    function pintarPopover(dados) {
+      if (!refsPopover) return;
+      const { statusEl, btnConectar, btnDesconectar } = refsPopover;
+      const conectando = dados.status === "conectando";
+      const conectado = dados.status === "conectado";
+      const aguardando = dados.status === "aguardando";
+      const cor = CORES_STATUS[dados.status] || "var(--text-dim)";
+      statusEl.style.color = cor;
+      statusEl.style.borderColor = cor;
+      const rotulo = ROTULOS_STATUS[dados.status] || "";
+      statusEl.innerHTML = (rotulo ? `<div style="font-weight:700;margin-bottom:3px;">${rotulo}</div>` : "") + (dados.mensagem || "");
+      btnConectar.disabled = conectando || conectado || aguardando;
+      btnDesconectar.disabled = !conectado && !conectando && !aguardando;
+    }
+
+    function aoChegarStatus(dados) {
+      ultimoStatus = dados;
+      aplicarEstadoIcone(dados);
+      pintarPopover(dados);
+    }
+
+    function fecharPopover() {
+      if (popover) { popover.remove(); popover = null; refsPopover = null; }
+    }
+
+    function abrirPopover() {
+      if (popover) { fecharPopover(); return; }
+      popover = document.createElement("div");
+      popover.className = "conexao-live-popover";
+      popover.innerHTML = `
+        <div style="font-size:14px;font-weight:700;margin-bottom:4px;">Conexão com a live</div>
+        <p style="font-size:12px;color:var(--text-dim);line-height:1.5;margin:0 0 14px;">Digite o @ do perfil — sem senha, é público. Não precisa já estar ao vivo: o app fica esperando sozinho até a live começar.</p>
+        <label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">@ do perfil</label>
+        <input id="clUsername" type="text" placeholder="seu.usuario" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;margin-bottom:10px;"/>
+        <label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Chave de API (Euler Stream)</label>
+        <input id="clApiKey" type="text" placeholder="cole aqui sua chave grátis" autocomplete="off" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;margin-bottom:12px;"/>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button id="clBtnConectar" class="btn-cta" style="flex:1;border-radius:8px;padding:10px;font-size:13px;cursor:pointer;">Conectar</button>
+          <button id="clBtnDesconectar" style="flex:1;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:13px;cursor:pointer;">Desconectar</button>
+        </div>
+        <div id="clStatus" style="padding:10px 12px;border-radius:8px;font-size:12px;line-height:1.5;background:var(--bg-alt);border:1px solid var(--border);color:var(--text-dim);"></div>
+        <p style="font-size:10.5px;color:var(--text-faint);margin:12px 0 0;line-height:1.5;">Chave grátis (plano Community, sem cartão) em <code>eulerstream.com/register</code>.</p>
+      `;
+      botaoEl.parentElement.appendChild(popover);
+
+      const campoUsername = popover.querySelector("#clUsername");
+      const campoApiKey = popover.querySelector("#clApiKey");
+      const btnConectar = popover.querySelector("#clBtnConectar");
+      const btnDesconectar = popover.querySelector("#clBtnDesconectar");
+      const statusEl = popover.querySelector("#clStatus");
+      refsPopover = { statusEl, btnConectar, btnDesconectar };
+
+      window.central.lerConfig().then((cfg) => {
+        if (cfg && cfg.username) campoUsername.value = cfg.username;
+        if (cfg && cfg.signApiKey) campoApiKey.value = cfg.signApiKey;
+      });
+      pintarPopover(ultimoStatus);
+
+      btnConectar.addEventListener("click", () => {
+        window.central.conectar({ username: campoUsername.value, signApiKey: campoApiKey.value });
+      });
+      btnDesconectar.addEventListener("click", () => window.central.desconectar());
+      [campoUsername, campoApiKey].forEach((el) => {
+        el.addEventListener("keydown", (e) => { if (e.key === "Enter") btnConectar.click(); });
+      });
+      popover.addEventListener("click", (e) => e.stopPropagation());
+
+      setTimeout(() => {
+        document.addEventListener("click", function fechar(ev) {
+          if (popover && !popover.contains(ev.target) && !botaoEl.contains(ev.target)) {
+            fecharPopover();
+            document.removeEventListener("click", fechar);
+          }
+        });
+      }, 0);
+    }
+
+    botaoEl.addEventListener("click", (e) => { e.stopPropagation(); abrirPopover(); });
+    window.central.lerStatus().then(aoChegarStatus);
+    window.central.aoAtualizarStatus(aoChegarStatus);
+  }
+
   const nav = sidebar;
 
   // -------- área principal --------

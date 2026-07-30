@@ -22,6 +22,25 @@ mudar esse serviço interno a qualquer momento e quebrar a conexão —
 nesse caso, normalmente uma atualização da biblioteca (`npm update`)
 resolve. A licença dela é AGPL-3.0.
 
+## Chave de API grátis (Euler Stream) — necessária hoje em dia
+
+A lib `tiktok-live-connector` delega a assinatura do handshake com o
+TikTok pra um serviço de terceiros, o [Euler Stream](https://www.eulerstream.com).
+Sem uma chave de API, algumas rotas retornam o erro:
+
+```
+[fetchWebcastSignatureFromEulerRoute] Failed to sign a request: This
+endpoint requires a Business plan. Purchase one at eulerstream.com/pricing.
+```
+
+A chave é **gratuita** (plano "Community", sem cartão de crédito):
+
+1. Crie uma conta em [eulerstream.com/register](https://www.eulerstream.com/register).
+2. No painel deles, copie sua API key.
+3. Cole ela no campo **"Chave de API (Euler Stream)"**, na janela
+   "Conexão com a live" deste app (ao lado do campo do `@`). Fica
+   salva localmente pras próximas vezes.
+
 ## Como rodar
 
 ```bash

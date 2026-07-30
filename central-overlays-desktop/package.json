@@ -15,7 +15,8 @@
   },
   "dependencies": {
     "tiktok-live-connector": "^2.4.3",
-    "ws": "^8.17.0"
+    "ws": "^8.17.0",
+    "electron-updater": "^6.3.0"
   },
   "devDependencies": {
     "electron": "^30.0.0",
@@ -36,6 +37,11 @@
     ],
     "win": { "target": "nsis" },
     "mac": { "target": "dmg" },
-    "linux": { "target": "AppImage" }
+    "linux": { "target": "AppImage" },
+    "publish": {
+      "provider": "github",
+      "owner": "Goguenblouts",
+      "repo": "overlay-live-tiktok"
+    }
   }
 }

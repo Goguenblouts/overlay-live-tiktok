@@ -489,7 +489,7 @@ function renderPainel() {
   ];
 
   secaoInicio.innerHTML = `
-    <div style="max-width:980px;">
+    <div style="max-width:1240px;">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
         <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,var(--grad-start),var(--grad-end));display:flex;align-items:center;justify-content:center;font-size:19px;color:#fff;flex-shrink:0;"><i class="fa-solid fa-gamepad"></i></div>
         <div>

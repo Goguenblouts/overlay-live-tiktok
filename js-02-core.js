@@ -22,6 +22,8 @@ const OVERLAYS = [
   { id: "combo",   nome: "Combo / sequência",     desc: "Contador ao vivo de likes e presentes em sequência" },
   { id: "vitrine", nome: "Vitrine de prêmios",    desc: "Lista dos prêmios passando em loop na tela, da direita pra esquerda" },
   { id: "eventos", nome: "Eventos personalizados", desc: "Dispara as regras (gatilho → ação) criadas na aba Eventos" },
+  { id: "tts",     nome: "Texto-pra-voz",         desc: "Lê mensagens, presentes e mais em voz alta, com a voz sintética do navegador" },
+  { id: "spinner", nome: "Roleta de presente",    desc: "Roleta que sorteia uma ação quando o presente configurado chega" },
 ];
 
 const PRESETS_TEMA = {
@@ -96,7 +98,7 @@ const CONFIG_PADRAO = {
   // combo/vitrine/eventos) pode ter um objeto parcial (mesmos campos de
   // "tema") que substitui só naquele overlay — o resto continua vindo do
   // tema global da aba Aparência. {} = sem sobrescrita, usa o global.
-  overlayTema: { metas: {}, ranking: {}, alerta: {}, combo: {}, vitrine: {}, eventos: {} },
+  overlayTema: { metas: {}, ranking: {}, alerta: {}, combo: {}, vitrine: {}, eventos: {}, tts: {}, spinner: {} },
   alerta: { ativo: true, valorMinimo: 50, duracaoMs: 5000 },
   combo: { ativo: true, janelaMs: 2500, fontes: ["like", "presente"] },
   // layout de exibição do overlay de Prêmios da live: "lateral" (card no
@@ -123,6 +125,37 @@ const CONFIG_PADRAO = {
     // Sistema de Fila (Fase 4): como o overlay de Eventos se comporta
     // quando vários eventos chegam rápido demais pra mostrar um por vez.
     filaConfig: { maximoItens: 20, agruparIguais: false, ignorarDuplicados: false },
+  },
+  // Texto-pra-voz: lê eventos em voz alta com a voz sintética do
+  // navegador (Web Speech API) — sem serviço externo, sem chave. Cada
+  // tipo de evento liga/desliga e tem seu próprio modelo de frase.
+  tts: {
+    ativo: false,
+    volume: 80,
+    taxa: 1,
+    tom: 1,
+    vozURI: "",
+    ignorarComandos: true,
+    tamanhoMaximo: 200,
+    eventos: {
+      mensagem: { ativo: true, template: "{nickname} disse: {mensagem}" },
+      presente: { ativo: true, template: "{nickname} mandou {presente}!" },
+      seguidor: { ativo: false, template: "{nickname} começou a seguir!" },
+      like: { ativo: false, template: "{nickname} curtiu a live" },
+      compartilhamento: { ativo: false, template: "{nickname} compartilhou a live!" },
+    },
+  },
+  // Roleta de presente (Gift Spinner): quando o gatilho configurado
+  // acontece, a roda gira e sorteia uma "fatia" (uma Ação já criada em
+  // Eventos, com peso = chance de sair). "qualquer" olha o valor em
+  // diamantes; "especifico" olha o nome exato do presente.
+  spinner: {
+    ativo: false,
+    modoGatilho: "qualquer",
+    nomePresenteEspecifico: "",
+    valorMinimo: 100,
+    duracaoGiroMs: 4000,
+    fatias: [],
   },
 };
 
@@ -382,6 +415,14 @@ function carregarConfig() {
       variaveis: (salvo.automacoes && salvo.automacoes.variaveis) || [],
       filaConfig: Object.assign(structuredClone(CONFIG_PADRAO.automacoes.filaConfig), (salvo.automacoes && salvo.automacoes.filaConfig) || {}),
     };
+    // tts/spinner são objetos aninhados (eventos/fatias) — merge raso
+    // igual os outros perderia campo novo que não existia quando a
+    // pessoa salvou a config pela última vez, então mescla um nível
+    // mais fundo também.
+    cfg.tts = Object.assign(structuredClone(CONFIG_PADRAO.tts), salvo.tts || {});
+    cfg.tts.eventos = Object.assign(structuredClone(CONFIG_PADRAO.tts.eventos), (salvo.tts && salvo.tts.eventos) || {});
+    cfg.spinner = Object.assign(structuredClone(CONFIG_PADRAO.spinner), salvo.spinner || {});
+    cfg.spinner.fatias = (salvo.spinner && salvo.spinner.fatias) || CONFIG_PADRAO.spinner.fatias;
     return cfg;
   } catch (e) {
     return structuredClone(CONFIG_PADRAO);

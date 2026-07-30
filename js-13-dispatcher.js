@@ -12,6 +12,10 @@ if (!view) {
   renderVitrine();
 } else if (view === "eventos") {
   renderEventos();
+} else if (view === "tts") {
+  renderTts();
+} else if (view === "spinner") {
+  renderSpinner();
 } else {
   document.body.innerHTML = "<div style='padding:20px;'>overlay desconhecido: " + view + "</div>";
 }

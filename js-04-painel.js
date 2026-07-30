@@ -602,6 +602,7 @@ function renderPainel() {
     }
     if (overlayId === "vitrine") return crop(2.2, "bottomcenter");
     if (overlayId === "eventos") return crop(0.95, "topright");
+    if (overlayId === "spinner") return crop(0.9, "center");
     return crop(0.95, "topleft"); // ranking, alerta, combo — aparecem sem position fixa, no canto superior esquerdo
   }
 
@@ -630,7 +631,12 @@ function renderPainel() {
 
     const previaRow = document.createElement("div");
     previaRow.style.cssText = "border-top:1px solid var(--border);padding:16px 18px;background:var(--bg-alt);display:flex;flex-direction:column;align-items:center;";
-    previaRow.innerHTML = `${TITULO_PREVIA}${caixaPreviaIframe(ov.id)}`;
+    // Texto-pra-voz não tem elemento visual (só toca áudio) — a prévia
+    // ao vivo com iframe ficaria só um quadriculado vazio, então mostra
+    // uma notinha explicando em vez da caixa.
+    previaRow.innerHTML = ov.id === "tts"
+      ? `${TITULO_PREVIA}<p style="font-size:12.5px;color:var(--text-faint);text-align:center;max-width:${PREVIA_BOX_W}px;margin:0;">Esse overlay não tem visual — só fala em voz alta. Use o botão "Testar" pra ouvir com eventos falsos.</p>`
+      : `${TITULO_PREVIA}${caixaPreviaIframe(ov.id)}`;
     bloco.appendChild(previaRow);
 
     galeriaWrap.appendChild(bloco);
@@ -1115,16 +1121,22 @@ function renderPainel() {
     const elOutros = document.getElementById("gradeOutros");
     const elPresentes = document.getElementById("gradePresentes");
     if (!elOutros || !elPresentes) return; // caixa ainda não montada nessa passada
-    function tileHtml(gatilho, emoji, label, nomePresente) {
+    function tileHtml(gatilho, emoji, label, nomePresente, imagem) {
       const idx = acharRegraDoGatilho(gatilho, nomePresente);
       const configurada = idx >= 0;
       const ativa = configurada && eventosEditando[idx].ativo !== false;
       const tituloExtra = configurada ? (ativa ? " — regra ativa (clique pra editar)" : " — regra pausada (clique pra editar)") : " — clique pra criar uma regra";
+      // imagem real do presente (quando o catálogo tem uma) fica por cima
+      // do emoji; se a imagem falhar ao carregar (CDN fora do ar, etc.),
+      // volta pro emoji sozinha via onerror — nunca fica com buraco vazio.
+      const iconeHtml = imagem
+        ? `<img src="${imagem}" alt="" class="grade-tile-img" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'grade-tile-emoji',textContent:'${emoji}'}));"/>`
+        : `<span class="grade-tile-emoji">${emoji}</span>`;
       return `
         <button type="button" class="grade-tile${configurada ? " grade-tile-config" : ""}${configurada && !ativa ? " grade-tile-pausada" : ""}"
           data-grade-gatilho="${gatilho}" data-grade-presente="${(nomePresente || "").replace(/"/g, "&quot;")}"
           title="${label}${tituloExtra}">
-          <span class="grade-tile-emoji">${emoji}</span>
+          ${iconeHtml}
           <span class="grade-tile-label">${label}</span>
           ${configurada ? `<span class="grade-tile-dot" style="background:${ativa ? "var(--ic-eventos)" : "var(--text-faint)"};"></span>` : ""}
         </button>`;
@@ -1134,7 +1146,7 @@ function renderPainel() {
     const termo = (campoBusca ? campoBusca.value : "").toLowerCase().trim();
     const presentes = termo ? CATALOGO_PRESENTES_TIKTOK.filter(p => p.nome.toLowerCase().includes(termo)) : CATALOGO_PRESENTES_TIKTOK;
     elPresentes.innerHTML = presentes.length
-      ? presentes.map(p => tileHtml("presente", p.emoji, p.nome, p.nome)).join("")
+      ? presentes.map(p => tileHtml("presente", p.emoji, p.nome, p.nome, p.imagem)).join("")
       : `<div class="evt-vazio">Nenhum presente encontrado pra "${termo}".</div>`;
     [elOutros, elPresentes].forEach(container => {
       container.querySelectorAll("[data-grade-gatilho]").forEach(btn => {
@@ -2691,6 +2703,62 @@ function renderPainel() {
     }
   }
 
+  // ------------------------------------------------------------
+  // Fatias da Roleta de presente: cada fatia liga uma Ação já criada
+  // em Eventos a um peso (chance de sair no giro) e uma cor. Igual o
+  // editor de faixas/tiers acima, guarda num array próprio enquanto o
+  // modal está aberto e só grava em cfg.spinner.fatias ao Salvar.
+  // ------------------------------------------------------------
+  let fatiasSpinnerEditando = [];
+  function renderFatiasSpinner(acoesDisponiveis) {
+    const el = document.getElementById("listaFatiasSpinner");
+    if (!el) return;
+    if (!fatiasSpinnerEditando.length) {
+      el.innerHTML = `<div class="evt-vazio">Nenhuma fatia ainda — adicione pelo menos 2 pra roleta ter o que sortear.</div>`;
+    } else {
+      el.innerHTML = fatiasSpinnerEditando.map((f, i) => `
+        <div style="display:grid;grid-template-columns:auto 1.4fr 0.8fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">cor</label>
+            <input data-fatia-i="${i}" data-fatia-campo="cor" type="color" value="${f.cor || "#F0A63C"}" style="width:40px;height:34px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;padding:2px;"/></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">ação</label>
+            <select data-fatia-i="${i}" data-fatia-campo="acaoId" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;">
+              <option value="">Escolha...</option>
+              ${acoesDisponiveis.map(a => `<option value="${a.id}" ${a.id === f.acaoId ? "selected" : ""}>${a.nome}</option>`).join("")}
+            </select></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">peso</label>
+            <input data-fatia-i="${i}" data-fatia-campo="peso" type="number" min="0.1" step="0.5" value="${f.peso ?? 1}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">rótulo (opcional)</label>
+            <input data-fatia-i="${i}" data-fatia-campo="label" type="text" placeholder="nome da ação" value="${f.label || ""}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+          <button data-remove-fatia="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
+        </div>
+      `).join("");
+    }
+    el.querySelectorAll("[data-fatia-campo]").forEach(input => {
+      const evento = input.tagName === "SELECT" || input.type === "color" ? "change" : "input";
+      input.addEventListener(evento, () => {
+        const i = Number(input.dataset.fatiaI);
+        const campo = input.dataset.fatiaCampo;
+        fatiasSpinnerEditando[i][campo] = campo === "peso" ? Number(input.value) : input.value;
+      });
+    });
+    el.querySelectorAll("[data-remove-fatia]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        fatiasSpinnerEditando.splice(Number(btn.dataset.removeFatia), 1);
+        renderFatiasSpinner(acoesDisponiveis);
+      });
+    });
+  }
+  function montarEditorFatiasSpinner(acoesDisponiveis) {
+    renderFatiasSpinner(acoesDisponiveis);
+    const btnAdd = document.getElementById("addFatiaSpinner");
+    if (btnAdd) {
+      btnAdd.addEventListener("click", () => {
+        fatiasSpinnerEditando.push({ id: "fatia" + Date.now(), label: "", cor: "#F0A63C", acaoId: acoesDisponiveis[0] ? acoesDisponiveis[0].id : "", peso: 1 });
+        renderFatiasSpinner(acoesDisponiveis);
+      });
+    }
+  }
+
   function renderListaTiers() {
     const el = document.getElementById("listaTiers");
     el.innerHTML = tiersEditando.map((t, i) => {
@@ -2896,6 +2964,77 @@ function renderPainel() {
         <button id="addTier" style="margin-top:6px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar tier</button>
       `;
     }
+    if (overlayId === "tts") {
+      let vozesDisponiveis = [];
+      try { vozesDisponiveis = (typeof speechSynthesis !== "undefined" && speechSynthesis.getVoices()) || []; } catch (e) {}
+      const NOMES_EVENTO_TTS = {
+        mensagem: "Mensagem no chat",
+        presente: "Presente",
+        seguidor: "Novo seguidor",
+        like: "Like",
+        compartilhamento: "Compartilhamento",
+      };
+      return `
+        <div style="margin-bottom:14px;">${toggleHtml("ttsAtivo", "Ativar texto-pra-voz", cfgAtual.tts.ativo)}</div>
+        <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 16px;">Lê os eventos em voz alta com a voz sintética do navegador que abrir esse link (Web Speech API) — sem chave, sem serviço externo. A lista de vozes abaixo depende do que estiver instalado na máquina que rodar o overlay (pode ser diferente da que você vê agora aqui no painel).</p>
+        <div style="display:grid;grid-template-columns:1.4fr 0.8fr 0.8fr;gap:10px;margin-bottom:6px;">
+          <div>
+            <label style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);display:block;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Voz</label>
+            <select id="ttsVoz" style="width:100%;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:9px;font-size:13px;">
+              <option value="">Padrão do navegador</option>
+              ${vozesDisponiveis.map(v => `<option value="${v.voiceURI}" ${cfgAtual.tts.vozURI === v.voiceURI ? "selected" : ""}>${v.name} (${v.lang})</option>`).join("")}
+            </select>
+          </div>
+          ${campoNumero("ttsTaxa", "Velocidade (0.5–2)", cfgAtual.tts.taxa)}
+          ${campoNumero("ttsTom", "Tom (0–2)", cfgAtual.tts.tom)}
+        </div>
+        <div style="margin:12px 0 16px;">
+          <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Volume da voz</label>
+          <input id="ttsVolume" type="range" min="0" max="100" value="${cfgAtual.tts.volume}" style="width:100%;"/>
+        </div>
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:16px;">
+          ${toggleHtml("ttsIgnorarComandos", "Ignorar mensagens que começam com ! ou /", cfgAtual.tts.ignorarComandos)}
+          <div>${campoNumero("ttsTamanhoMaximo", "Máx. de caracteres lidos", cfgAtual.tts.tamanhoMaximo, "width:170px;")}</div>
+        </div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;">O que ler em voz alta</div>
+        <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;">Use <code>{nickname}</code>, <code>{presente}</code>, <code>{mensagem}</code> e <code>{valor}</code> conforme o evento.</p>
+        <div id="listaEventosTts">
+          ${Object.keys(NOMES_EVENTO_TTS).map(chave => {
+            const ev = cfgAtual.tts.eventos[chave] || { ativo: false, template: "" };
+            return `
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+              <label class="toggle" style="flex-shrink:0;"><input type="checkbox" data-tts-evento-ativo="${chave}" ${ev.ativo ? "checked" : ""}/><span class="trilha"></span></label>
+              <div style="width:120px;flex-shrink:0;font-size:12px;color:var(--text-dim);">${NOMES_EVENTO_TTS[chave]}</div>
+              <input data-tts-evento-template="${chave}" type="text" value="${ev.template || ""}" style="flex:1;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 10px;font-size:12.5px;"/>
+            </div>`;
+          }).join("")}
+        </div>
+        <button id="ttsTestarVoz" type="button" style="margin-top:4px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:8px 14px;font-size:12px;cursor:pointer;"><i class="fa-solid fa-volume-high"></i> Testar voz</button>
+      `;
+    }
+    if (overlayId === "spinner") {
+      const modoAtual = cfgAtual.spinner.modoGatilho || "qualquer";
+      return `
+        <div style="margin-bottom:14px;">${toggleHtml("spinnerAtivo", "Ativar roleta de presente", cfgAtual.spinner.ativo)}</div>
+        <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;">Quando o gatilho abaixo acontecer, a roleta gira e sorteia uma das fatias — cada fatia é uma Ação já criada na aba Eventos, com um peso que é a chance dela sair.</p>
+        <input type="hidden" id="spinnerModoAtual" value="${modoAtual}"/>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Gira quando chegar</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button type="button" data-spinner-modo="qualquer" style="background:${modoAtual === "qualquer" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "qualquer" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "qualquer" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Qualquer presente</button>
+          <button type="button" data-spinner-modo="especifico" style="background:${modoAtual === "especifico" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "especifico" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "especifico" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Presente específico</button>
+        </div>
+        <div id="spinnerModoQualquer" style="${modoAtual === "qualquer" ? "" : "display:none;"}margin-bottom:16px;">
+          ${campoNumero("spinnerValorMinimo", "Mínimo de diamantes pra girar", cfgAtual.spinner.valorMinimo)}
+        </div>
+        <div id="spinnerModoEspecifico" style="${modoAtual === "especifico" ? "" : "display:none;"}margin-bottom:16px;">
+          ${campoTexto("spinnerNomePresente", "Nome exato do presente (ex: Rose)", cfgAtual.spinner.nomePresenteEspecifico)}
+        </div>
+        <div style="margin-bottom:16px;">${campoNumero("spinnerDuracao", "Duração do giro (segundos)", Math.round((cfgAtual.spinner.duracaoGiroMs || 4000) / 1000))}</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Fatias da roleta</div>
+        <div id="listaFatiasSpinner"></div>
+        <button id="addFatiaSpinner" style="margin-top:2px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar fatia</button>
+      `;
+    }
     return "";
   }
 
@@ -2959,6 +3098,32 @@ function renderPainel() {
       novo.sons = Object.assign({}, base.sons, { volume: volumeAtual(), combo: pegaSom("combo", true) });
     } else if (overlayId === "vitrine") {
       novo.tiers = tiersEditando;
+    } else if (overlayId === "tts") {
+      const eventosNovo = {};
+      document.querySelectorAll("#listaEventosTts [data-tts-evento-ativo]").forEach(cb => {
+        const chave = cb.dataset.ttsEventoAtivo;
+        const templateInput = document.querySelector(`[data-tts-evento-template="${chave}"]`);
+        eventosNovo[chave] = { ativo: cb.checked, template: templateInput ? templateInput.value : "" };
+      });
+      novo.tts = {
+        ativo: document.getElementById("ttsAtivo").checked,
+        volume: Number(document.getElementById("ttsVolume").value),
+        taxa: Number(document.getElementById("ttsTaxa").value) || 1,
+        tom: Number(document.getElementById("ttsTom").value) || 1,
+        vozURI: document.getElementById("ttsVoz").value,
+        ignorarComandos: document.getElementById("ttsIgnorarComandos").checked,
+        tamanhoMaximo: Number(document.getElementById("ttsTamanhoMaximo").value) || 200,
+        eventos: eventosNovo,
+      };
+    } else if (overlayId === "spinner") {
+      novo.spinner = {
+        ativo: document.getElementById("spinnerAtivo").checked,
+        modoGatilho: document.getElementById("spinnerModoAtual").value,
+        nomePresenteEspecifico: document.getElementById("spinnerNomePresente").value,
+        valorMinimo: Number(document.getElementById("spinnerValorMinimo").value) || 0,
+        duracaoGiroMs: (Number(document.getElementById("spinnerDuracao").value) || 4) * 1000,
+        fatias: fatiasSpinnerEditando.filter(f => f.acaoId),
+      };
     }
     return novo;
   }
@@ -3028,6 +3193,47 @@ function renderPainel() {
     if (overlayId === "ranking") wireSomRow(backdrop, "seguidor", "somVolumeModal");
     if (overlayId === "alerta") wireSomRow(backdrop, "presente", "somVolumeModal");
     if (overlayId === "combo") wireSomRow(backdrop, "combo", "somVolumeModal");
+    if (overlayId === "spinner") {
+      fatiasSpinnerEditando = structuredClone(cfgAtual.spinner.fatias || []);
+      montarEditorFatiasSpinner(cfgAtual.automacoes.acoes || []);
+    }
+    if (overlayId === "spinner") {
+      backdrop.querySelectorAll("[data-spinner-modo]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const modo = btn.dataset.spinnerModo;
+          const campoModo = document.getElementById("spinnerModoAtual");
+          if (campoModo) campoModo.value = modo;
+          backdrop.querySelectorAll("[data-spinner-modo]").forEach(b => {
+            const ativo = b.dataset.spinnerModo === modo;
+            b.style.background = ativo ? "var(--accent)" : "var(--bg-alt)";
+            b.style.color = ativo ? "#fff" : "var(--text)";
+            b.style.borderColor = ativo ? "var(--accent)" : "var(--border)";
+          });
+          const elQualquer = document.getElementById("spinnerModoQualquer");
+          const elEspecifico = document.getElementById("spinnerModoEspecifico");
+          if (elQualquer) elQualquer.style.display = modo === "qualquer" ? "" : "none";
+          if (elEspecifico) elEspecifico.style.display = modo === "especifico" ? "" : "none";
+        });
+      });
+    }
+    if (overlayId === "tts") {
+      const btnTestarVoz = document.getElementById("ttsTestarVoz");
+      if (btnTestarVoz) {
+        btnTestarVoz.addEventListener("click", () => {
+          if (typeof speechSynthesis === "undefined") { alert("Esse navegador não suporta a Web Speech API (texto-pra-voz)."); return; }
+          const utter = new SpeechSynthesisUtterance("Isso é um teste da voz do texto-pra-voz.");
+          utter.rate = Number(document.getElementById("ttsTaxa").value) || 1;
+          utter.pitch = Number(document.getElementById("ttsTom").value) || 1;
+          utter.volume = Math.max(0, Math.min(1, Number(document.getElementById("ttsVolume").value) / 100));
+          const vozId = document.getElementById("ttsVoz").value;
+          if (vozId) {
+            const voz = speechSynthesis.getVoices().find(v => v.voiceURI === vozId);
+            if (voz) utter.voice = voz;
+          }
+          speechSynthesis.speak(utter);
+        });
+      }
+    }
 
     backdrop.querySelectorAll("[data-layout-metas]").forEach(btn => {
       btn.addEventListener("click", () => {

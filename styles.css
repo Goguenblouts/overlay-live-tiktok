@@ -464,6 +464,7 @@
   }
   .grade-tile:hover { border-color: var(--ic-eventos); background: var(--surface-hover); transform: translateY(-2px); }
   .grade-tile-emoji { font-size: 20px; line-height: 1; }
+  .grade-tile-img { width: 26px; height: 26px; object-fit: contain; }
   .grade-tile-label {
     font-size: 10px; color: var(--text-dim); line-height: 1.25; word-break: break-word;
     display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;

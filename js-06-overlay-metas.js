@@ -349,7 +349,11 @@ function renderMetas() {
       u.fontes.like += ganhos;
       registrarPontosGanhos(userId, "like", ganhos, nickname);
     }
-    if (tipo === "follow" || tipo === "member") {
+    // "seguidor" só conta pontos UMA vez por espectador — sem essa trava,
+    // reconexões da lib do TikTok (ela às vezes reenvia o evento "follow"
+    // de quem já seguia) somavam pontos de novo a cada reconexão.
+    if ((tipo === "follow" || tipo === "member") && !u.seguidorContado) {
+      u.seguidorContado = true;
       u.fontes.seguidor += v.seguidor;
       registrarPontosGanhos(userId, "seguidor", v.seguidor, nickname);
     }

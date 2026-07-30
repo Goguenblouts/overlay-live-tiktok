@@ -80,10 +80,16 @@ function renderRanking() {
     const userId = data.userId ?? data.uniqueId ?? data.user?.userId ?? data.user?.uniqueId;
     const nickname = data.nickname ?? data.user?.nickname ?? data.uniqueId ?? "espectador";
     if (!userId) return;
+    // guarda ANTES de marcar como conhecido — usado logo abaixo pra só
+    // tocar som e somar pontos de "novo seguidor" uma vez por pessoa (a
+    // lib do TikTok às vezes reenvia o evento "follow" de quem já seguia
+    // ao reconectar, e sem essa trava isso tocava o som e somava pontos
+    // de novo a cada reconexão).
+    const jaEraSeguidorAntes = !!seguidoresConhecidos[userId];
     if (tipo === "follow") {
       seguidoresConhecidos[userId] = true;
       salvarSeguidores();
-      tocarSomConfig(cfg.sons.seguidor, cfg.sons.volume);
+      if (!jaEraSeguidorAntes) tocarSomConfig(cfg.sons.seguidor, cfg.sons.volume);
     }
     const conta = !cfg.exigirSeguidor || ehSeguidor(userId, data);
     if (!conta) return;
@@ -97,7 +103,7 @@ function renderRanking() {
       const ganhos = Math.floor(qtd / v.likeACada) * v.likeValor;
       if (ganhos > 0) somar(userId, nickname, ganhos);
     }
-    if (tipo === "follow" || tipo === "member") somar(userId, nickname, v.seguidor);
+    if ((tipo === "follow" || tipo === "member") && !jaEraSeguidorAntes) somar(userId, nickname, v.seguidor);
     if (tipo === "share") somar(userId, nickname, v.compartilhamento);
     render();
   }

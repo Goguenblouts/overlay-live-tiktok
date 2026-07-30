@@ -20,12 +20,11 @@
    versões novas ao abrir, baixando e instalando sem precisar
    baixar/reinstalar na mão de novo. Ver configurarAtualizacaoAutomatica().
 
-   Duas janelas abrem ao iniciar o app:
-   - Painel (index.html): a Central de Overlays de sempre.
-   - Conexão com a live: janela pequena pra digitar o @ do TikTok
-     e ligar/desligar a conexão — feito à parte do painel porque
-     TikFinity/tiktok-live-connector não têm nada a ver com a
-     configuração de overlays em si.
+   Uma janela só abre ao iniciar o app: o Painel (index.html), a
+   Central de Overlays de sempre. O botão de "Conexão com a live"
+   (ícone de antena, canto inferior esquerdo da barra lateral) abre
+   um popover ali mesmo — digite o @ do TikTok e ligue/desligue a
+   conexão sem precisar de uma janela separada.
    ============================================================ */
 const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
@@ -44,7 +43,6 @@ const CAMINHO_INDEX = fs.existsSync(CAMINHO_INDEX_IRMAO) ? CAMINHO_INDEX_IRMAO :
 const CAMINHO_CONFIG_LOCAL = path.join(app.getPath("userData"), "central-overlays-desktop.json");
 
 let janelaPainel = null;
-let janelaConexao = null;
 let servidorWs = null;
 let conexaoTikTok = null;
 let statusAtual = { status: "desconectado", mensagem: "Ainda não conectado." };
@@ -311,8 +309,8 @@ async function desconectarDoTikTok(opcoes) {
 function atualizarStatus(status, mensagem) {
   statusAtual = { status, mensagem };
   console.log(`[status] ${status}: ${mensagem}`);
-  if (janelaConexao && !janelaConexao.isDestroyed()) {
-    janelaConexao.webContents.send("status-atualizado", statusAtual);
+  if (janelaPainel && !janelaPainel.isDestroyed()) {
+    janelaPainel.webContents.send("status-atualizado", statusAtual);
   }
 }
 
@@ -367,29 +365,18 @@ function criarJanelaPainel() {
     width: 1280,
     height: 820,
     title: "Central de Overlays",
-    webPreferences: { contextIsolation: true },
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+    },
   });
   janelaPainel.setMenuBarVisibility(false);
   janelaPainel.loadFile(CAMINHO_INDEX);
 }
 
-function criarJanelaConexao() {
-  janelaConexao = new BrowserWindow({
-    width: 420,
-    height: 520,
-    resizable: false,
-    title: "Conexão com a live",
-    webPreferences: {
-      preload: path.join(__dirname, "control-preload.js"),
-      contextIsolation: true,
-    },
-  });
-  janelaConexao.setMenuBarVisibility(false);
-  janelaConexao.loadFile(path.join(__dirname, "control.html"));
-}
-
 /* ------------------------------------------------------------
-   Ponte com a janela "Conexão com a live" (control.html)
+   Ponte com o botão "Conexão com a live" dentro do próprio Painel
+   (ver preload.js e o popover em js-04-painel.js)
    ------------------------------------------------------------ */
 ipcMain.handle("conectar-tiktok", (evento, dados) => iniciarAutoConectar(dados && dados.username, dados && dados.signApiKey));
 ipcMain.handle("desconectar-tiktok", () => desconectarDoTikTok());
@@ -399,13 +386,11 @@ ipcMain.handle("ler-status", () => statusAtual);
 app.whenReady().then(() => {
   iniciarServidorWebSocket();
   criarJanelaPainel();
-  criarJanelaConexao();
   configurarAtualizacaoAutomatica();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       criarJanelaPainel();
-      criarJanelaConexao();
     }
   });
 });

@@ -2975,10 +2975,15 @@ function renderPainel() {
       const novo = coletarConfigDoModal(overlayId, base);
       salvarConfig(novo);
       renderPrevias();
+      // Não fecha sozinho — só mostra a confirmação. A pessoa continua
+      // ajustando valores (ex: faixas de presente, tiers) sem a tela
+      // desaparecer no meio da edição; fecha quando quiser, pelo X ou
+      // clicando fora.
       const msg = document.getElementById("modalSalvoMsg");
       if (msg) {
         msg.style.display = "inline";
-        setTimeout(() => fecharModalOverlay(), 1000);
+        clearTimeout(msg._timerSumir);
+        msg._timerSumir = setTimeout(() => { msg.style.display = "none"; }, 2500);
       }
     });
   }

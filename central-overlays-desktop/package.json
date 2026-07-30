@@ -41,7 +41,8 @@
     "publish": {
       "provider": "github",
       "owner": "Goguenblouts",
-      "repo": "overlay-live-tiktok"
+      "repo": "overlay-live-tiktok",
+      "releaseType": "release"
     }
   }
 }

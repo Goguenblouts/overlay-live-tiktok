@@ -1819,6 +1819,7 @@ function renderPainel() {
       { id: "fogos", nome: "Mostrar fogos" },
       { id: "variavel", nome: "Atualizar variável" },
       { id: "executarRegra", nome: "Executar outra regra" },
+      { id: "comandoJogo", nome: "🎮 Comando de jogo (em breve)" },
     ];
     const estiloMini = "background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:6px 8px;font-size:11.5px;";
 
@@ -1863,6 +1864,12 @@ function renderPainel() {
                  ${outras.map(r => `<option value="${r.id}" ${r.id === p.regraId ? "selected" : ""}>${r.nome}</option>`).join("")}
                </select>`
             : `<span style="font-size:11px;color:var(--text-faint);">crie outra regra primeiro</span>`;
+        } else if (p.tipo === "comandoJogo") {
+          // Placeholder — não faz nada em tempo real ainda (o overlay
+          // ignora esse tipo de passo com segurança). Reserva o espaço
+          // na UI pra quando a integração com jogos (Minecraft/GTA/etc.)
+          // for implementada, sem quebrar regras já salvas.
+          camposExtras = `<span style="font-size:11px;color:var(--text-faint);">em breve — nenhuma ação ainda, só reserva o lugar na sequência.</span>`;
         }
         return `
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;flex-wrap:wrap;background:var(--bg-alt);border:1px solid var(--border);border-radius:6px;padding:6px 8px;">

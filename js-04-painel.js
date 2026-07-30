@@ -770,6 +770,61 @@ function renderPainel() {
   document.getElementById("evtTestarTudo").addEventListener("click", () => irParaAba("simulador"));
 
   // ------------------------------------------------------------
+  // Presets (estilo StreamToEarn): "perfis" de regras — só as regras do
+  // preset ATIVO disparam de verdade no overlay. Ações continuam
+  // compartilhadas entre todos os presets. Precisa vir ANTES da caixa
+  // "Presets" abaixo (que já chama renderPresets() na hora), senão dá
+  // erro de TDZ (usar "let" antes de existir) e trava o painel inteiro.
+  // ------------------------------------------------------------
+  let presetsEditando = structuredClone(cfg.automacoes.presets && cfg.automacoes.presets.length ? cfg.automacoes.presets : [{ id: "preset-padrao", nome: "Preset 1" }]);
+  let presetAtivoIdEditando = cfg.automacoes.presetAtivoId || presetsEditando[0].id;
+  if (!presetsEditando.find(p => p.id === presetAtivoIdEditando)) presetAtivoIdEditando = presetsEditando[0].id;
+
+  // ------------------------------------------------------------
+  // Regras: cada uma tem no máximo UMA condição (campo/operador/valor).
+  // Migra formatos antigos (grupos de condições E/OU, ou o formato ainda
+  // mais antigo condicaoTipo/condicaoValor) pegando a primeira condição
+  // que existir, sem perder o que já estava configurado.
+  // ------------------------------------------------------------
+  function normalizarRegra(r0) {
+    const r = r0 || {};
+    let condicao = r.condicao || null;
+    if (!condicao) {
+      const primeiroGrupo = r.condicionamento && r.condicionamento.grupos && r.condicionamento.grupos[0];
+      const primeiraCondicao = primeiroGrupo && primeiroGrupo.condicoes && primeiroGrupo.condicoes[0];
+      if (primeiraCondicao) {
+        condicao = { campo: primeiraCondicao.campo, operador: primeiraCondicao.operador, valor: primeiraCondicao.valor };
+      } else if (r.condicaoTipo === "valorMinimo") {
+        condicao = { campo: "valor", operador: "maiorIgual", valor: r.condicaoValor || "0" };
+      } else if (r.condicaoTipo === "contemPalavra") {
+        condicao = { campo: "comentario", operador: "contem", valor: r.condicaoValor || "" };
+      }
+    }
+    return {
+      id: r.id || ("evento" + Date.now() + Math.random().toString(36).slice(2, 7)),
+      nome: r.nome || "nova regra",
+      ativo: r.ativo !== false,
+      // preset dono dessa regra — só dispara de verdade quando esse é o
+      // preset ativo. Regra nova cai no preset que tava selecionado na
+      // hora que foi criada.
+      presetId: r.presetId || presetAtivoIdEditando,
+      gatilho: r.gatilho || "mensagem",
+      prioridade: r.prioridade != null ? r.prioridade : 5,
+      cooldownMs: r.cooldownMs || 0,
+      // campo vazio = sem condição, a regra sempre dispara quando o
+      // gatilho acontecer.
+      condicao: condicao || { campo: "", operador: "", valor: "" },
+      acaoId: r.acaoId || "",
+      efeitos: r.efeitos || [],
+      // Fase 4 — "ações executáveis": sequência extra que roda DEPOIS da
+      // ação principal (esperar, tocar/parar som, confete, fogos,
+      // mexer em variável, ou disparar outra regra).
+      passos: r.passos || [],
+    };
+  }
+  let eventosEditando = (cfg.automacoes.eventos || []).map(normalizarRegra);
+
+  // ------------------------------------------------------------
   // Presets (estilo StreamToEarn): trocar de "perfil" de regras em tempo
   // real sem apagar nada — ex: um preset pro chat calmo, outro pra hype.
   // Ações continuam compartilhadas entre presets; só a Grade de gatilhos
@@ -1108,59 +1163,6 @@ function renderPainel() {
     variaveisEditando.push(normalizarVariavel({}));
     renderListaVariaveis();
   });
-
-  // ------------------------------------------------------------
-  // Presets (estilo StreamToEarn): "perfis" de regras — só as regras do
-  // preset ATIVO disparam de verdade no overlay. Ações continuam
-  // compartilhadas entre todos os presets.
-  // ------------------------------------------------------------
-  let presetsEditando = structuredClone(cfg.automacoes.presets && cfg.automacoes.presets.length ? cfg.automacoes.presets : [{ id: "preset-padrao", nome: "Preset 1" }]);
-  let presetAtivoIdEditando = cfg.automacoes.presetAtivoId || presetsEditando[0].id;
-  if (!presetsEditando.find(p => p.id === presetAtivoIdEditando)) presetAtivoIdEditando = presetsEditando[0].id;
-
-  // ------------------------------------------------------------
-  // Regras: cada uma tem no máximo UMA condição (campo/operador/valor).
-  // Migra formatos antigos (grupos de condições E/OU, ou o formato ainda
-  // mais antigo condicaoTipo/condicaoValor) pegando a primeira condição
-  // que existir, sem perder o que já estava configurado.
-  // ------------------------------------------------------------
-  function normalizarRegra(r0) {
-    const r = r0 || {};
-    let condicao = r.condicao || null;
-    if (!condicao) {
-      const primeiroGrupo = r.condicionamento && r.condicionamento.grupos && r.condicionamento.grupos[0];
-      const primeiraCondicao = primeiroGrupo && primeiroGrupo.condicoes && primeiroGrupo.condicoes[0];
-      if (primeiraCondicao) {
-        condicao = { campo: primeiraCondicao.campo, operador: primeiraCondicao.operador, valor: primeiraCondicao.valor };
-      } else if (r.condicaoTipo === "valorMinimo") {
-        condicao = { campo: "valor", operador: "maiorIgual", valor: r.condicaoValor || "0" };
-      } else if (r.condicaoTipo === "contemPalavra") {
-        condicao = { campo: "comentario", operador: "contem", valor: r.condicaoValor || "" };
-      }
-    }
-    return {
-      id: r.id || ("evento" + Date.now() + Math.random().toString(36).slice(2, 7)),
-      nome: r.nome || "nova regra",
-      ativo: r.ativo !== false,
-      // preset dono dessa regra — só dispara de verdade quando esse é o
-      // preset ativo. Regra nova cai no preset que tava selecionado na
-      // hora que foi criada.
-      presetId: r.presetId || presetAtivoIdEditando,
-      gatilho: r.gatilho || "mensagem",
-      prioridade: r.prioridade != null ? r.prioridade : 5,
-      cooldownMs: r.cooldownMs || 0,
-      // campo vazio = sem condição, a regra sempre dispara quando o
-      // gatilho acontecer.
-      condicao: condicao || { campo: "", operador: "", valor: "" },
-      acaoId: r.acaoId || "",
-      efeitos: r.efeitos || [],
-      // Fase 4 — "ações executáveis": sequência extra que roda DEPOIS da
-      // ação principal (esperar, tocar/parar som, confete, fogos,
-      // mexer em variável, ou disparar outra regra).
-      passos: r.passos || [],
-    };
-  }
-  let eventosEditando = (cfg.automacoes.eventos || []).map(normalizarRegra);
 
   // ------------------------------------------------------------
   // Grade de gatilhos — lógica. Os 4 gatilhos "especiais" (sem presente

@@ -1,0 +1,51 @@
+name: Build e publicar app desktop
+
+# Roda sozinho toda vez que algo muda no app desktop ou no site (já
+# que o instalador empacota o site junto). Gera o instalador do
+# Windows e publica como uma nova "Release" no GitHub — é essa
+# Release que o app (via electron-updater) verifica pra se
+# atualizar sozinho, e também de onde dá pra baixar o instalador
+# na mão pela primeira vez (aba "Releases" do repositório).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "central-overlays-desktop/**"
+      - "index.html"
+      - "styles.css"
+      - "js-*.js"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Copiar o site pra dentro da pasta do app
+        shell: bash
+        run: cp index.html styles.css js-*.js central-overlays-desktop/
+
+      - name: Instalar dependências
+        working-directory: central-overlays-desktop
+        run: npm install
+
+      - name: Definir a versão desta build
+        working-directory: central-overlays-desktop
+        shell: bash
+        run: npm version 1.0.${{ github.run_number }} --no-git-tag-version --allow-same-version
+
+      - name: Gerar o instalador e publicar como Release
+        working-directory: central-overlays-desktop
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

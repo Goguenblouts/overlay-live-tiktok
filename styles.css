@@ -453,6 +453,29 @@
   }
   .evt-btn-add:hover { border-color: var(--ic-eventos); color: var(--ic-eventos); background: rgba(240,166,60,0.06); transform: none; }
 
+  /* Grade de gatilhos — grade de quadradinhos clicáveis (estilo "preset"
+     do StreamToEarn) que cria/abre a regra do gatilho direto, sem passar
+     pelo formulário "+ Nova regra". */
+  .grade-tile {
+    position: relative; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 4px; background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: 10px; padding: 10px 6px; cursor: pointer; text-align: center;
+    transition: border-color 0.15s ease, background 0.15s ease, transform 0.15s ease;
+  }
+  .grade-tile:hover { border-color: var(--ic-eventos); background: var(--surface-hover); transform: translateY(-2px); }
+  .grade-tile-emoji { font-size: 20px; line-height: 1; }
+  .grade-tile-label {
+    font-size: 10px; color: var(--text-dim); line-height: 1.25; word-break: break-word;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .grade-tile-config { border-color: var(--ic-eventos); background: rgba(240,166,60,0.08); }
+  .grade-tile-config .grade-tile-label { color: var(--text); }
+  .grade-tile-pausada { opacity: 0.55; }
+  .grade-tile-dot {
+    position: absolute; top: 6px; right: 6px; width: 7px; height: 7px; border-radius: 999px;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .evt-card:hover { transform: none; }
+    .grade-tile:hover { transform: none; }
   }

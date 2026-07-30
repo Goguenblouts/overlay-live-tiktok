@@ -36,13 +36,17 @@
   }
   #status.conectado { border-color: var(--ok); color: var(--ok); }
   #status.erro, #status.erro-servidor { border-color: var(--erro); color: var(--erro); }
+  #status.aguardando { border-color: #e8b339; color: #e8b339; }
+  #status .bolinha { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; margin-right: 7px; }
+  #status.conectado .bolinha { animation: pulsar 1.4s ease-in-out infinite; }
+  @keyframes pulsar { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
   #dica { font-size: 11px; color: var(--text-dim); margin-top: 16px; line-height: 1.6; }
   code { background: var(--surface); border-radius: 4px; padding: 1px 5px; }
 </style>
 </head>
 <body>
   <h1>Conexão com a live</h1>
-  <p class="sub">Digite o @ do perfil que está ao vivo agora — sem senha, é público, igual o TikFinity faz.</p>
+  <p class="sub">Digite o @ do perfil — sem senha, é público. Não precisa já estar ao vivo: clique em Conectar e o app fica esperando sozinho até a live começar.</p>
 
   <label for="campoUsername">@ do perfil</label>
   <input id="campoUsername" type="text" placeholder="seu.usuario" autocomplete="off"/>
@@ -75,11 +79,28 @@
 
     function aplicarStatus(dados) {
       statusEl.className = dados.status;
-      statusEl.textContent = dados.mensagem || "";
       const conectando = dados.status === "conectando";
       const conectado = dados.status === "conectado";
-      btnConectar.disabled = conectando || conectado;
-      btnDesconectar.disabled = !conectado && !conectando;
+      const aguardando = dados.status === "aguardando";
+
+      const rotulos = {
+        conectado: "🔴 Ao vivo agora",
+        aguardando: "⏳ Aguardando a live começar",
+        conectando: "Conectando...",
+        erro: "⚠️ Erro",
+        "erro-servidor": "⚠️ Erro",
+        desconectado: "Desconectado",
+      };
+      const rotulo = rotulos[dados.status] || "";
+      const bolinha = conectado ? '<span class="bolinha"></span>' : "";
+      statusEl.innerHTML = (rotulo ? `<div style="font-weight:700;margin-bottom:4px;">${bolinha}${rotulo}</div>` : "") +
+        (dados.mensagem || "");
+
+      // Enquanto conectando/aguardando/já conectado, "Conectar" fica
+      // desabilitado (já está tentando ou já conseguiu); "Desconectar"
+      // serve também pra cancelar a espera.
+      btnConectar.disabled = conectando || conectado || aguardando;
+      btnDesconectar.disabled = !conectado && !conectando && !aguardando;
     }
 
     window.central.lerConfig().then((cfg) => {

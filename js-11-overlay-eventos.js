@@ -115,9 +115,16 @@ function renderEventos() {
     const valor = extrairValorEvento(gatilho, payload);
     const ctx = { gatilho, payload, data, nickname, valor, cfg };
 
-    // prioridade mais alta primeiro; várias regras podem disparar pro
-    // mesmo evento (cada uma com sua própria ação e cooldown).
-    const regrasOrdenadas = (cfg.automacoes.eventos || []).slice().sort((a, b) => (b.prioridade || 5) - (a.prioridade || 5));
+    // só regras do preset ATIVO disparam — presets são "perfis" de
+    // automação que a pessoa troca em tempo real na aba Eventos (ex: um
+    // preset pro chat calmo, outro pra hype), igual o conceito de preset
+    // do StreamToEarn. prioridade mais alta primeiro; várias regras podem
+    // disparar pro mesmo evento (cada uma com sua própria ação e cooldown).
+    const presetAtivoId = cfg.automacoes.presetAtivoId;
+    const regrasOrdenadas = (cfg.automacoes.eventos || [])
+      .filter(r => !presetAtivoId || !r.presetId || r.presetId === presetAtivoId)
+      .slice()
+      .sort((a, b) => (b.prioridade || 5) - (a.prioridade || 5));
     regrasOrdenadas.forEach(regra => {
       if (regra.ativo === false) return;
       if (!avaliarRegra(regra, ctx)) return;

@@ -191,11 +191,14 @@ function tocarSomAcao(somCfg, volumeGeral, duracaoMs) {
 // Monta o HTML/CSS de uma ação completa (fundo, borda, glow, texto
 // estilizado, barra de progresso) — usado tanto no card real do overlay
 // quanto na prévia ao vivo do editor, garantindo que fica idêntico.
-function montarCardAcaoHtml(acao, tema, textoResolvido) {
+// "extras" (opcional): { raridade } — nome de uma raridade (RARIDADES_TIER)
+// pra mostrar um selinho colorido, usado pela Roleta de presente.
+function montarCardAcaoHtml(acao, tema, textoResolvido, extras) {
   const corDestaque = acao.cor || tema.corPrimaria;
   const fundo = Object.assign({ tipo: "cor", cor: tema.corCard, corGradiente2: tema.corFundo, imagemUrl: "", blur: 0, glow: false, radius: tema.raio, opacidade: 100 }, acao.fundo || {});
   const txt = Object.assign({ fonte: "", cor: tema.corTexto, tamanho: 15, alinhamento: "left", contornoAtivo: false, contornoCor: "#000000", contornoEspessura: 2, sombraAtiva: false, sombraCor: "#000000", sombraBlur: 4 }, acao.textoEstilo || {});
   const barra = Object.assign({ ativo: false, cor: corDestaque, espessura: 4 }, acao.barraProgresso || {});
+  const raridadeInfo = extras && extras.raridade ? raridadePorNome(extras.raridade) : null;
 
   let backgroundCss;
   if (fundo.tipo === "gradiente") backgroundCss = `background:linear-gradient(135deg, ${fundo.cor}, ${fundo.corGradiente2});`;
@@ -219,13 +222,14 @@ function montarCardAcaoHtml(acao, tema, textoResolvido) {
     <div style="position:relative;z-index:1;display:flex;align-items:center;gap:12px;padding:14px 18px;text-align:${txt.alinhamento};${txt.alinhamento === "center" ? "justify-content:center;" : txt.alinhamento === "right" ? "justify-content:flex-end;" : ""}">
       <div style="width:38px;height:38px;flex-shrink:0;border-radius:50%;background:${corDestaque};display:flex;align-items:center;justify-content:center;font-size:18px;">${iconeAcaoHtml(acao, 18)}</div>
       <div style="min-width:0;">
-        <div style="font-size:11.5px;color:${tema.corTextoSec};">${acao.nome || ""}</div>
+        <div style="font-size:11.5px;color:${tema.corTextoSec};">${acao.nome || ""}${raridadeInfo ? ` · <span style="color:${raridadeInfo.cor};font-weight:700;">${raridadeInfo.nome}</span>` : ""}</div>
         <div style="font-size:${txt.tamanho}px;color:${txt.cor};font-weight:700;font-family:${fonteFamilia};${textoSombraCss}white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${textoResolvido}</div>
       </div>
     </div>
     ${barra.ativo ? `<div style="position:relative;z-index:1;height:${barra.espessura}px;background:${barra.cor}33;"><div class="acao-barra-progresso" style="height:100%;width:100%;background:${barra.cor};transform-origin:left;"></div></div>` : ""}
   `.trim();
-  const wrapperCss = `position:relative;overflow:hidden;border-radius:${fundo.radius}px;border:1.5px solid ${corDestaque};box-shadow:${glowCss}0 10px 30px rgba(0,0,0,.35);`;
+  const corBordaFinal = raridadeInfo ? raridadeInfo.cor : corDestaque;
+  const wrapperCss = `position:relative;overflow:hidden;border-radius:${fundo.radius}px;border:1.5px solid ${corBordaFinal};box-shadow:${raridadeInfo ? `0 0 20px ${raridadeInfo.cor}66, ` : glowCss}0 10px 30px rgba(0,0,0,.35);`;
   return { innerHtml, wrapperCss };
 }
 
@@ -255,12 +259,13 @@ function criarFilaDeAcoes(container, volumeGeralPadrao, opcoes) {
     mostrando = true;
     const item = fila.shift();
     itemAtual = item;
-    const { acao, tema } = item;
+    const { acao, tema, extras } = item;
     let textoResolvido = item.textoResolvido;
     if (item.quantidade > 1) textoResolvido += ` (x${item.quantidade})`;
-    const montado = montarCardAcaoHtml(acao, tema, textoResolvido);
+    const montado = montarCardAcaoHtml(acao, tema, textoResolvido, extras);
     const anim = ANIMACOES_ACAO[(acao.animacao && acao.animacao.entrada) || "slideTop"] || ANIMACOES_ACAO.fade;
     const cartao = document.createElement("div");
+    cartao.className = acao.interromperFila ? "acao-card-interrupcao" : "";
     cartao.style.cssText = montado.wrapperCss + `animation:${anim.in};`;
     cartao.innerHTML = montado.innerHtml;
     container.appendChild(cartao);
@@ -293,11 +298,28 @@ function criarFilaDeAcoes(container, volumeGeralPadrao, opcoes) {
   }
 
   return {
-    mostrar(acao, tema, textoResolvido, animacoesAtivas) {
+    // "extras" (opcional): { raridade } — repassado até montarCardAcaoHtml
+    // pra mostrar o selinho de raridade (usado pela Roleta de presente).
+    mostrar(acao, tema, textoResolvido, animacoesAtivas, extras) {
       const agora = Date.now();
       const cooldownMs = acao.cooldownMs || 0;
       if (cooldownMs > 0 && ultimoDisparoPorAcao[acao.id] && agora - ultimoDisparoPorAcao[acao.id] < cooldownMs) return; // ainda em cooldown
       ultimoDisparoPorAcao[acao.id] = agora;
+
+      // "Interromper fila" (Alertas + interrupções, estilo StreamToEarn):
+      // essa ação passa na frente de tudo — limpa o que já tá na tela e
+      // na espera, e mostra na hora. O cooldown acima já evita spam.
+      if (acao.interromperFila) {
+        fila.length = 0;
+        if (timerAtual) { clearTimeout(timerAtual); timerAtual = null; }
+        if (cartaoAtual) { cartaoAtual.remove(); cartaoAtual = null; }
+        mostrando = false;
+        itemAtual = null;
+        fila.push({ acao, tema, textoResolvido, animacoesAtivas, extras, quantidade: 1 });
+        notificar();
+        processarFila();
+        return;
+      }
 
       if (cfgFila.ignorarDuplicados) {
         const jaTem = (itemAtual && itemAtual.acao.id === acao.id && itemAtual.textoResolvido === textoResolvido)
@@ -314,7 +336,7 @@ function criarFilaDeAcoes(container, volumeGeralPadrao, opcoes) {
       for (let i = 0; i < fila.length; i++) {
         if ((fila[i].acao.prioridade || 5) < prioridade) { indiceInsercao = i; break; }
       }
-      fila.splice(indiceInsercao, 0, { acao, tema, textoResolvido, animacoesAtivas, quantidade: 1 });
+      fila.splice(indiceInsercao, 0, { acao, tema, textoResolvido, animacoesAtivas, extras, quantidade: 1 });
       if (cfgFila.maximoItens > 0 && fila.length > cfgFila.maximoItens) {
         fila.length = cfgFila.maximoItens; // descarta o excesso do fim (menor prioridade primeiro)
       }

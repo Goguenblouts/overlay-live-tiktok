@@ -4,9 +4,14 @@
      chegar (qualquer presente valendo X diamantes, ou um presente
      específico pelo nome); aí a roda gira e sorteia uma das "fatias"
      configuradas (cada fatia = uma Ação já criada em Eventos, com um
-     peso que é a chance dela sair — fatia maior = mais chance).
+     peso que é a chance dela sair — fatia maior = mais chance — e uma
+     raridade opcional só pra destacar visualmente).
    - ao parar, mostra a ação sorteada com o mesmo motor de card+som
      (criarFilaDeAcoes) usado no overlay de Eventos personalizados.
+   - Múltiplos grupos (estilo StreamToEarn "multi-spinner"): cfg.spinners
+     é uma lista de roletas independentes. "?grupo=<id>" na URL escolhe
+     qual delas esse overlay mostra; sem o parâmetro, usa a primeira —
+     assim um link antigo (sem &grupo=) continua funcionando sozinho.
    ============================================================ */
 
 // fatia.peso vira um ARCO no círculo (não é sorteio por "n cópias") —
@@ -34,7 +39,11 @@ function renderSpinner() {
   const t = temaEfetivo(cfg, "spinner");
   const fonteCss = carregarFonteGoogle(t.fonte);
   document.body.style.fontFamily = fonteCss;
-  const spinnerCfg = cfg.spinner;
+
+  const grupos = cfg.spinners || [];
+  const grupoId = params.get("grupo");
+  const spinnerCfg = (grupoId && grupos.find(g => g.id === grupoId)) || grupos[0];
+  if (!spinnerCfg) return; // nenhum grupo configurado ainda
 
   const TAMANHO = 300;
   const fatiasComAngulo = calcularFatiasComAngulo(spinnerCfg.fatias);
@@ -53,8 +62,11 @@ function renderSpinner() {
           const meio = (f.inicioDeg + f.fimDeg) / 2;
           const acao = (cfg.automacoes.acoes || []).find(a => a.id === f.acaoId);
           const label = f.label || (acao ? acao.nome : "?");
+          const raridadeInfo = f.raridade ? raridadePorNome(f.raridade) : null;
           return `<div style="position:absolute;top:50%;left:50%;width:${TAMANHO / 2 - 20}px;transform-origin:left center;transform:rotate(${meio}deg) translateY(-50%);">
-            <span style="display:block;margin-left:26px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;max-width:${TAMANHO / 2 - 44}px;overflow:hidden;text-overflow:ellipsis;">${label}</span>
+            <span style="display:block;margin-left:26px;font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);white-space:nowrap;max-width:${TAMANHO / 2 - 44}px;overflow:hidden;text-overflow:ellipsis;">
+              ${raridadeInfo ? `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${raridadeInfo.cor};margin-right:4px;box-shadow:0 0 5px ${raridadeInfo.cor};"></span>` : ""}${label}
+            </span>
           </div>`;
         }).join("")}
       </div>
@@ -94,7 +106,7 @@ function renderSpinner() {
       const acao = (cfg.automacoes.acoes || []).find(a => a.id === escolhida.acaoId);
       if (acao && acao.ativo !== false) {
         const textoResolvido = textoComPlaceholders(acao.texto, ctxEvento.nickname, ctxEvento.valor, cfg);
-        api.mostrar(acao, t, textoResolvido, cfg.animacoes);
+        api.mostrar(acao, t, textoResolvido, cfg.animacoes, { raridade: escolhida.raridade });
       }
       setTimeout(() => { wrap.style.display = "none"; }, 3000);
     }, duracaoMs);
@@ -125,6 +137,6 @@ function renderSpinner() {
   if (params.get("sim") === "1") {
     iniciarSimulador(processarEventoSpinner, { min: 3000, max: 6000 });
   } else {
-    conectarTikFinity(cfg, "overlay-spinner", processarEventoSpinner);
+    conectarTikFinity(cfg, "overlay-spinner-" + spinnerCfg.id, processarEventoSpinner);
   }
 }

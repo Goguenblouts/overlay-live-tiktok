@@ -635,7 +635,7 @@ function renderPainel() {
     // ao vivo com iframe ficaria só um quadriculado vazio, então mostra
     // uma notinha explicando em vez da caixa.
     previaRow.innerHTML = ov.id === "tts"
-      ? `${TITULO_PREVIA}<p style="font-size:12.5px;color:var(--text-faint);text-align:center;max-width:${PREVIA_BOX_W}px;margin:0;">Esse overlay não tem visual — só fala em voz alta. Use o botão "Testar" pra ouvir com eventos falsos.</p>`
+      ? `${TITULO_PREVIA}<p style="font-size:12.5px;color:var(--text-faint);text-align:center;max-width:${PREVIA_BOX_W}px;margin:0;">Esse overlay quase não tem visual — só fala em voz alta e mostra um selinho "🔊 falando..." enquanto lê algo (dá pra desligar em Config). Use o botão "Testar" pra ouvir com eventos falsos.</p>`
       : `${TITULO_PREVIA}${caixaPreviaIframe(ov.id)}`;
     bloco.appendChild(previaRow);
 
@@ -760,13 +760,85 @@ function renderPainel() {
   });
 
   document.getElementById("evtDesativarTodas").addEventListener("click", () => {
-    if (!eventosEditando.length) return;
-    if (!confirm("Desativar todas as " + eventosEditando.length + " regras? Elas ficam salvas, só param de disparar até você reativar.")) return;
-    eventosEditando.forEach(r => { r.ativo = false; });
+    const doPresetAtivo = eventosEditando.filter(r => r.presetId === presetAtivoIdEditando);
+    if (!doPresetAtivo.length) return;
+    if (!confirm("Desativar todas as " + doPresetAtivo.length + " regras do preset atual? Elas ficam salvas, só param de disparar até você reativar.")) return;
+    doPresetAtivo.forEach(r => { r.ativo = false; });
     renderListaEventos();
   });
 
   document.getElementById("evtTestarTudo").addEventListener("click", () => irParaAba("simulador"));
+
+  // ------------------------------------------------------------
+  // Presets (estilo StreamToEarn): trocar de "perfil" de regras em tempo
+  // real sem apagar nada — ex: um preset pro chat calmo, outro pra hype.
+  // Ações continuam compartilhadas entre presets; só a Grade de gatilhos
+  // e a lista de Regras abaixo mudam conforme o preset ativo.
+  // ------------------------------------------------------------
+  const presetsBox = document.createElement("div");
+  presetsBox.className = "painel-card evt-box";
+  presetsBox.style.cssText = "padding:18px;margin-bottom:18px;";
+  secaoEventos.appendChild(presetsBox);
+  presetsBox.innerHTML = `
+    <div class="evt-box-header">
+      <div class="evt-box-icone"><i class="fa-solid fa-layer-group"></i></div>
+      <div class="evt-box-titulo">Presets</div>
+    </div>
+    <p style="font-size:12px;color:var(--text-dim);margin:0 0 12px;">Cada preset é um "perfil" de regras — só as do preset ativo disparam no overlay. Troque em tempo real, sem perder nada dos outros. As Ações continuam as mesmas em todos.</p>
+    <div id="listaPresets" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button id="presetNovo" style="background:transparent;color:var(--text-dim);border:1.5px dashed var(--border);border-radius:999px;padding:8px 16px;font-size:12.5px;cursor:pointer;"><i class="fa-solid fa-plus"></i> Novo preset</button>
+      <button id="presetRenomear" style="background:var(--bg-alt);color:var(--text);border:1px solid var(--border);border-radius:999px;padding:8px 16px;font-size:12.5px;cursor:pointer;"><i class="fa-solid fa-pen"></i> Renomear atual</button>
+      <button id="presetExcluir" style="background:var(--bg-alt);color:var(--text-dim);border:1px solid var(--border);border-radius:999px;padding:8px 16px;font-size:12.5px;cursor:pointer;"><i class="fa-regular fa-trash-can"></i> Excluir atual</button>
+    </div>
+  `;
+  function renderPresets() {
+    const el = document.getElementById("listaPresets");
+    if (!el) return;
+    el.innerHTML = presetsEditando.map(p => {
+      const ativo = p.id === presetAtivoIdEditando;
+      const qtd = eventosEditando.filter(r => r.presetId === p.id).length;
+      return `<button type="button" data-preset="${p.id}" style="background:${ativo ? "var(--accent)" : "var(--bg-alt)"};color:${ativo ? "#fff" : "var(--text)"};border:1px solid ${ativo ? "var(--accent)" : "var(--border)"};border-radius:999px;padding:8px 14px;font-size:12.5px;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;">${p.nome}<span style="font-family:var(--font-mono);font-size:10.5px;opacity:.8;background:${ativo ? "rgba(255,255,255,.2)" : "var(--surface)"};border-radius:999px;padding:1px 7px;">${qtd}</span></button>`;
+    }).join("");
+    el.querySelectorAll("[data-preset]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        presetAtivoIdEditando = btn.dataset.preset;
+        renderPresets();
+        renderListaEventos();
+      });
+    });
+  }
+  renderPresets();
+  document.getElementById("presetNovo").addEventListener("click", () => {
+    const nome = prompt("Nome do novo preset:", "Preset " + (presetsEditando.length + 1));
+    if (!nome) return;
+    const novo = { id: "preset" + Date.now(), nome };
+    presetsEditando.push(novo);
+    presetAtivoIdEditando = novo.id;
+    renderPresets();
+    renderListaEventos();
+  });
+  document.getElementById("presetRenomear").addEventListener("click", () => {
+    const atual = presetsEditando.find(p => p.id === presetAtivoIdEditando);
+    if (!atual) return;
+    const nome = prompt("Novo nome pro preset:", atual.nome);
+    if (!nome) return;
+    atual.nome = nome;
+    renderPresets();
+  });
+  document.getElementById("presetExcluir").addEventListener("click", () => {
+    if (presetsEditando.length <= 1) { alert("Precisa ter pelo menos um preset."); return; }
+    const atual = presetsEditando.find(p => p.id === presetAtivoIdEditando);
+    if (!atual) return;
+    const qtdRegras = eventosEditando.filter(r => r.presetId === atual.id).length;
+    if (!confirm(`Excluir o preset "${atual.nome}"? As ${qtdRegras} regras dele passam pro primeiro preset da lista.`)) return;
+    presetsEditando = presetsEditando.filter(p => p.id !== atual.id);
+    const destinoId = presetsEditando[0].id;
+    eventosEditando.forEach(r => { if (r.presetId === atual.id) r.presetId = destinoId; });
+    presetAtivoIdEditando = destinoId;
+    renderPresets();
+    renderListaEventos();
+  });
 
   const acoesBox = document.createElement("div");
   acoesBox.className = "painel-card evt-box";
@@ -863,6 +935,9 @@ function renderPainel() {
       categoria: a.categoria || "Geral",
       prioridade: a.prioridade != null ? a.prioridade : 5,
       cooldownMs: a.cooldownMs || 0,
+      // "Alertas + interrupções": quando true, essa ação limpa a fila do
+      // overlay de Eventos e mostra na hora, em vez de esperar sua vez.
+      interromperFila: !!a.interromperFila,
       duracaoMs: a.duracaoMs || 4000,
       texto: a.texto || "{nickname} ativou!",
       textoEstilo: Object.assign({ fonte: "", cor: "#ffffff", tamanho: 15, alinhamento: "left", contornoAtivo: false, contornoCor: "#000000", contornoEspessura: 2, sombraAtiva: false, sombraCor: "#000000", sombraBlur: 4 }, a.textoEstilo || {}),
@@ -1035,6 +1110,15 @@ function renderPainel() {
   });
 
   // ------------------------------------------------------------
+  // Presets (estilo StreamToEarn): "perfis" de regras — só as regras do
+  // preset ATIVO disparam de verdade no overlay. Ações continuam
+  // compartilhadas entre todos os presets.
+  // ------------------------------------------------------------
+  let presetsEditando = structuredClone(cfg.automacoes.presets && cfg.automacoes.presets.length ? cfg.automacoes.presets : [{ id: "preset-padrao", nome: "Preset 1" }]);
+  let presetAtivoIdEditando = cfg.automacoes.presetAtivoId || presetsEditando[0].id;
+  if (!presetsEditando.find(p => p.id === presetAtivoIdEditando)) presetAtivoIdEditando = presetsEditando[0].id;
+
+  // ------------------------------------------------------------
   // Regras: cada uma tem no máximo UMA condição (campo/operador/valor).
   // Migra formatos antigos (grupos de condições E/OU, ou o formato ainda
   // mais antigo condicaoTipo/condicaoValor) pegando a primeira condição
@@ -1058,6 +1142,10 @@ function renderPainel() {
       id: r.id || ("evento" + Date.now() + Math.random().toString(36).slice(2, 7)),
       nome: r.nome || "nova regra",
       ativo: r.ativo !== false,
+      // preset dono dessa regra — só dispara de verdade quando esse é o
+      // preset ativo. Regra nova cai no preset que tava selecionado na
+      // hora que foi criada.
+      presetId: r.presetId || presetAtivoIdEditando,
       gatilho: r.gatilho || "mensagem",
       prioridade: r.prioridade != null ? r.prioridade : 5,
       cooldownMs: r.cooldownMs || 0,
@@ -1089,6 +1177,7 @@ function renderPainel() {
 
   function acharRegraDoGatilho(gatilho, nomePresente) {
     return eventosEditando.findIndex(r => {
+      if (r.presetId !== presetAtivoIdEditando) return false;
       if (r.gatilho !== gatilho) return false;
       if (gatilho === "presente") {
         return !!(r.condicao && r.condicao.campo === "nomePresente" && r.condicao.valor === nomePresente);
@@ -1181,7 +1270,7 @@ function renderPainel() {
           <label class="toggle" style="flex-shrink:0;" title="Ativar/desativar ação"><input type="checkbox" data-toggleacao="${i}" ${!inativa ? "checked" : ""}/><span class="trilha"></span></label>
           <div class="evt-avatar" style="background:${cor};">${iconeAcaoHtml(a, 16)}</div>
           <div class="evt-info">
-            <div class="evt-nome">${a.nome}<span class="evt-chip">${a.categoria}</span>${inativa ? `<span class="evt-chip evt-chip-inativo">pausada</span>` : ""}</div>
+            <div class="evt-nome">${a.nome}<span class="evt-chip">${a.categoria}</span>${a.interromperFila ? `<span class="evt-chip" style="color:var(--ic-eventos);border-color:rgba(245,166,35,.4);"><i class="fa-solid fa-bolt"></i> interrompe</span>` : ""}${inativa ? `<span class="evt-chip evt-chip-inativo">pausada</span>` : ""}</div>
             <div class="evt-meta">${Math.round((a.duracaoMs || 4000) / 1000)}s na tela${a.som && a.som.ativo ? " · <i class=\"fa-solid fa-volume-high\"></i> som" : ""}${a.cooldownMs ? ` · cooldown ${Math.round(a.cooldownMs / 1000)}s` : ""}</div>
           </div>
           <div class="evt-actions">
@@ -1310,10 +1399,14 @@ function renderPainel() {
           ${campoTexto("aeNome", "Nome da ação", a.nome)}
           <div><label style="${rotuloAE}">Categoria</label><input id="aeCategoria" type="text" value="${a.categoria}" style="${estiloCampoAE}"/></div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
           ${campoNumero("aePrioridade", "Prioridade (1-10)", a.prioridade)}
           ${campoNumero("aeCooldown", "Cooldown (segundos)", Math.round((a.cooldownMs || 0) / 1000))}
           ${campoNumero("aeDuracao", "Duração na tela (seg)", Math.round((a.duracaoMs || 4000) / 1000))}
+        </div>
+        <div style="background:var(--bg-alt);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:16px;">
+          ${toggleHtml("aeInterromper", "Interromper fila (furar a fila)", !!a.interromperFila)}
+          <p style="font-size:11.5px;color:var(--text-faint);margin:6px 0 0;">Estilo "alertas + interrupções": quando essa ação disparar, ela limpa o que estiver na tela/esperando e aparece na hora — use pra presentes grandes ou eventos que não podem esperar a fila. O cooldown acima evita spam.</p>
         </div>
 
         <div style="font-size:13px;font-weight:600;margin-bottom:10px;padding-top:14px;border-top:1px solid var(--border);">Texto</div>
@@ -1443,6 +1536,7 @@ function renderPainel() {
         prioridade: Number(document.getElementById("aePrioridade").value) || 5,
         cooldownMs: Math.round((Number(document.getElementById("aeCooldown").value) || 0) * 1000),
         duracaoMs: Math.round((Number(document.getElementById("aeDuracao").value) || 4) * 1000),
+        interromperFila: document.getElementById("aeInterromper").checked,
         texto: document.getElementById("aeTexto").value,
         textoEstilo: {
           fonte: document.getElementById("aeFonte").value,
@@ -1552,10 +1646,12 @@ function renderPainel() {
   function renderListaEventos() {
     const el = document.getElementById("listaEventos");
     const contador = document.getElementById("regrasCount");
-    if (contador) contador.textContent = String(eventosEditando.length);
+    const doPresetAtivo = eventosEditando.filter(r => r.presetId === presetAtivoIdEditando);
+    if (contador) contador.textContent = String(doPresetAtivo.length);
     const termo = (filtroBuscaEventos || "").toLowerCase().trim();
     const itensFiltrados = eventosEditando
       .map((r, i) => ({ r, i }))
+      .filter(({ r }) => r.presetId === presetAtivoIdEditando)
       .filter(({ r }) => {
         if (!termo) return true;
         const gatilhoLabel = (GATILHOS.find(g => g.id === r.gatilho) || {}).label || r.gatilho || "";
@@ -1631,7 +1727,7 @@ function renderPainel() {
 
   document.getElementById("salvarEventos").addEventListener("click", () => {
     const atual = carregarConfig();
-    atual.automacoes = { acoes: acoesEditando, eventos: eventosEditando, variaveis: variaveisEditando, filaConfig: filaConfigEditando };
+    atual.automacoes = { acoes: acoesEditando, eventos: eventosEditando, variaveis: variaveisEditando, filaConfig: filaConfigEditando, presets: presetsEditando, presetAtivoId: presetAtivoIdEditando };
     salvarConfig(atual);
     renderPrevias();
     const msg = document.getElementById("salvoEventosMsg");
@@ -2704,20 +2800,24 @@ function renderPainel() {
   }
 
   // ------------------------------------------------------------
-  // Fatias da Roleta de presente: cada fatia liga uma Ação já criada
-  // em Eventos a um peso (chance de sair no giro) e uma cor. Igual o
-  // editor de faixas/tiers acima, guarda num array próprio enquanto o
-  // modal está aberto e só grava em cfg.spinner.fatias ao Salvar.
+  // Roleta de presente: múltiplos grupos (estilo StreamToEarn
+  // "multi-spinner") — cada grupo é uma roleta independente, com seu
+  // próprio link de overlay (?view=spinner&grupo=<id>), gatilho e
+  // fatias. spinnersEditando guarda TODOS os grupos enquanto o modal
+  // está aberto e só grava em cfg.spinners ao Salvar. Cada fatia liga
+  // uma Ação já criada em Eventos a um peso (chance de sair no giro),
+  // uma cor e uma raridade opcional (só visual).
   // ------------------------------------------------------------
-  let fatiasSpinnerEditando = [];
-  function renderFatiasSpinner(acoesDisponiveis) {
-    const el = document.getElementById("listaFatiasSpinner");
+  let spinnersEditando = [];
+  function renderFatiasSpinner(gi, acoesDisponiveis) {
+    const el = document.getElementById("listaFatiasSpinner_" + gi);
     if (!el) return;
-    if (!fatiasSpinnerEditando.length) {
+    const fatias = spinnersEditando[gi].fatias;
+    if (!fatias.length) {
       el.innerHTML = `<div class="evt-vazio">Nenhuma fatia ainda — adicione pelo menos 2 pra roleta ter o que sortear.</div>`;
     } else {
-      el.innerHTML = fatiasSpinnerEditando.map((f, i) => `
-        <div style="display:grid;grid-template-columns:auto 1.4fr 0.8fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
+      el.innerHTML = fatias.map((f, i) => `
+        <div style="display:grid;grid-template-columns:auto 1.3fr 0.7fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:8px;">
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">cor</label>
             <input data-fatia-i="${i}" data-fatia-campo="cor" type="color" value="${f.cor || "#F0A63C"}" style="width:40px;height:34px;border:1px solid var(--border);border-radius:6px;background:var(--surface);cursor:pointer;padding:2px;"/></div>
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">ação</label>
@@ -2727,6 +2827,11 @@ function renderPainel() {
             </select></div>
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">peso</label>
             <input data-fatia-i="${i}" data-fatia-campo="peso" type="number" min="0.1" step="0.5" value="${f.peso ?? 1}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
+          <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">raridade</label>
+            <select data-fatia-i="${i}" data-fatia-campo="raridade" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;">
+              <option value="">Sem raridade</option>
+              ${RARIDADES_TIER.map(r => `<option value="${r.nome}" ${r.nome === f.raridade ? "selected" : ""}>${r.nome}</option>`).join("")}
+            </select></div>
           <div><label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);text-transform:uppercase;">rótulo (opcional)</label>
             <input data-fatia-i="${i}" data-fatia-campo="label" type="text" placeholder="nome da ação" value="${f.label || ""}" style="width:100%;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:7px;font-size:12px;"/></div>
           <button data-remove-fatia="${i}" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 12px;font-size:12px;cursor:pointer;">remover</button>
@@ -2738,25 +2843,124 @@ function renderPainel() {
       input.addEventListener(evento, () => {
         const i = Number(input.dataset.fatiaI);
         const campo = input.dataset.fatiaCampo;
-        fatiasSpinnerEditando[i][campo] = campo === "peso" ? Number(input.value) : input.value;
+        fatias[i][campo] = campo === "peso" ? Number(input.value) : input.value;
       });
     });
     el.querySelectorAll("[data-remove-fatia]").forEach(btn => {
       btn.addEventListener("click", () => {
-        fatiasSpinnerEditando.splice(Number(btn.dataset.removeFatia), 1);
-        renderFatiasSpinner(acoesDisponiveis);
+        fatias.splice(Number(btn.dataset.removeFatia), 1);
+        renderFatiasSpinner(gi, acoesDisponiveis);
       });
     });
   }
-  function montarEditorFatiasSpinner(acoesDisponiveis) {
-    renderFatiasSpinner(acoesDisponiveis);
-    const btnAdd = document.getElementById("addFatiaSpinner");
+  function montarEditorFatiasSpinner(gi, acoesDisponiveis) {
+    renderFatiasSpinner(gi, acoesDisponiveis);
+    const btnAdd = document.getElementById("addFatiaSpinner_" + gi);
     if (btnAdd) {
       btnAdd.addEventListener("click", () => {
-        fatiasSpinnerEditando.push({ id: "fatia" + Date.now(), label: "", cor: "#F0A63C", acaoId: acoesDisponiveis[0] ? acoesDisponiveis[0].id : "", peso: 1 });
-        renderFatiasSpinner(acoesDisponiveis);
+        spinnersEditando[gi].fatias.push({ id: "fatia" + Date.now(), label: "", cor: "#F0A63C", acaoId: acoesDisponiveis[0] ? acoesDisponiveis[0].id : "", peso: 1, raridade: "" });
+        renderFatiasSpinner(gi, acoesDisponiveis);
       });
     }
+  }
+
+  // Monta um grupo (roleta) inteiro — usado dentro de renderSpinnerGrupos.
+  function corpoGrupoSpinner(g, gi) {
+    const modoAtual = g.modoGatilho || "qualquer";
+    const linkGrupo = location.origin + location.pathname + "?view=spinner&grupo=" + g.id;
+    return `
+      <div class="painel-card" style="padding:16px;margin-bottom:14px;border-left:3px solid var(--ic-eventos);" data-grupo-box="${gi}">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
+          <input data-grupo-campo="nome" data-grupo-i="${gi}" type="text" value="${g.nome || ""}" placeholder="Nome do grupo" style="flex:1;min-width:140px;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 10px;font-size:13px;font-weight:600;"/>
+          <label class="toggle"><input type="checkbox" data-grupo-campo="ativo" data-grupo-i="${gi}" ${g.ativo ? "checked" : ""}/><span class="trilha"></span></label>
+          ${spinnersEditando.length > 1 ? `<button data-remover-grupo="${gi}" title="Remover grupo" style="background:transparent;color:#e8794f;border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:12px;cursor:pointer;"><i class="fa-regular fa-trash-can"></i></button>` : ""}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <input readonly value="${linkGrupo}" style="flex:1;min-width:0;box-sizing:border-box;background:var(--surface);border:1px solid var(--border);color:var(--text-faint);border-radius:6px;padding:7px 9px;font-family:var(--font-mono);font-size:10.5px;"/>
+          <button data-copiar-link-grupo="${linkGrupo}" style="background:var(--bg-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap;">Copiar link</button>
+          <button data-testar-grupo="${g.id}" style="background:var(--bg-alt);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:7px 10px;font-size:11.5px;cursor:pointer;white-space:nowrap;">Testar</button>
+        </div>
+        <input type="hidden" id="spinnerModoAtual_${gi}" value="${modoAtual}"/>
+        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Gira quando chegar</div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;">
+          <button type="button" data-spinner-modo="qualquer" data-grupo-i="${gi}" style="background:${modoAtual === "qualquer" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "qualquer" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "qualquer" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Qualquer presente</button>
+          <button type="button" data-spinner-modo="especifico" data-grupo-i="${gi}" style="background:${modoAtual === "especifico" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "especifico" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "especifico" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Presente específico</button>
+        </div>
+        <div id="spinnerModoQualquer_${gi}" style="${modoAtual === "qualquer" ? "" : "display:none;"}margin-bottom:12px;">
+          ${campoNumero("spinnerValorMinimo_" + gi, "Mínimo de diamantes pra girar", g.valorMinimo)}
+        </div>
+        <div id="spinnerModoEspecifico_${gi}" style="${modoAtual === "especifico" ? "" : "display:none;"}margin-bottom:12px;">
+          ${campoTexto("spinnerNomePresente_" + gi, "Nome exato do presente (ex: Rose)", g.nomePresenteEspecifico)}
+        </div>
+        <div style="margin-bottom:14px;">${campoNumero("spinnerDuracao_" + gi, "Duração do giro (segundos)", Math.round((g.duracaoGiroMs || 4000) / 1000))}</div>
+        <div style="font-size:12.5px;font-weight:600;margin-bottom:4px;">Fatias dessa roleta</div>
+        <div id="listaFatiasSpinner_${gi}"></div>
+        <button id="addFatiaSpinner_${gi}" style="margin-top:2px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar fatia</button>
+      </div>
+    `;
+  }
+
+  // Redesenha TODOS os grupos (chamado ao abrir o modal e sempre que um
+  // grupo é adicionado/removido — os campos de cada grupo já editado
+  // ficam preservados porque vêm de spinnersEditando, não do DOM antigo).
+  function renderSpinnerGrupos(acoesDisponiveis) {
+    const container = document.getElementById("spinnerGruposContainer");
+    if (!container) return;
+    container.innerHTML = spinnersEditando.map((g, gi) => corpoGrupoSpinner(g, gi)).join("");
+
+    spinnersEditando.forEach((g, gi) => montarEditorFatiasSpinner(gi, acoesDisponiveis));
+
+    container.querySelectorAll("[data-grupo-campo]").forEach(input => {
+      const gi = Number(input.dataset.grupoI);
+      const campo = input.dataset.grupoCampo;
+      const evento = input.type === "checkbox" ? "change" : "input";
+      input.addEventListener(evento, () => {
+        spinnersEditando[gi][campo] = input.type === "checkbox" ? input.checked : input.value;
+      });
+    });
+    container.querySelectorAll("[data-spinner-modo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const gi = Number(btn.dataset.grupoI);
+        const modo = btn.dataset.spinnerModo;
+        spinnersEditando[gi].modoGatilho = modo;
+        const campoModo = document.getElementById("spinnerModoAtual_" + gi);
+        if (campoModo) campoModo.value = modo;
+        container.querySelectorAll(`[data-spinner-modo][data-grupo-i="${gi}"]`).forEach(b => {
+          const ativo = b.dataset.spinnerModo === modo;
+          b.style.background = ativo ? "var(--accent)" : "var(--bg-alt)";
+          b.style.color = ativo ? "#fff" : "var(--text)";
+          b.style.borderColor = ativo ? "var(--accent)" : "var(--border)";
+        });
+        const elQualquer = document.getElementById("spinnerModoQualquer_" + gi);
+        const elEspecifico = document.getElementById("spinnerModoEspecifico_" + gi);
+        if (elQualquer) elQualquer.style.display = modo === "qualquer" ? "" : "none";
+        if (elEspecifico) elEspecifico.style.display = modo === "especifico" ? "" : "none";
+      });
+    });
+    container.querySelectorAll("[data-copiar-link-grupo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        copiarTexto(btn.dataset.copiarLinkGrupo);
+        const original = btn.textContent;
+        btn.textContent = "Copiado ✓";
+        setTimeout(() => (btn.textContent = original), 1500);
+      });
+    });
+    container.querySelectorAll("[data-testar-grupo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const cfgTeste = carregarConfig();
+        cfgTeste.spinners = spinnersEditando;
+        const cfgCodificado = codificarConfigParaLink(cfgTeste);
+        window.open(location.pathname + "?view=spinner&grupo=" + btn.dataset.testarGrupo + "&sim=1&preview=1&cfg=" + cfgCodificado, "_blank");
+      });
+    });
+    container.querySelectorAll("[data-remover-grupo]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (spinnersEditando.length <= 1) return;
+        if (!confirm("Remover esse grupo de roleta? As fatias dele se perdem.")) return;
+        spinnersEditando.splice(Number(btn.dataset.removerGrupo), 1);
+        renderSpinnerGrupos(acoesDisponiveis);
+      });
+    });
   }
 
   function renderListaTiers() {
@@ -2992,20 +3196,22 @@ function renderPainel() {
           <label style="font-family:var(--font-mono);font-size:10px;color:var(--text-faint);display:block;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.04em;">Volume da voz</label>
           <input id="ttsVolume" type="range" min="0" max="100" value="${cfgAtual.tts.volume}" style="width:100%;"/>
         </div>
-        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:10px;">
           ${toggleHtml("ttsIgnorarComandos", "Ignorar mensagens que começam com ! ou /", cfgAtual.tts.ignorarComandos)}
           <div>${campoNumero("ttsTamanhoMaximo", "Máx. de caracteres lidos", cfgAtual.tts.tamanhoMaximo, "width:170px;")}</div>
         </div>
+        <div style="margin-bottom:16px;">${toggleHtml("ttsMostrarSelo", 'Mostrar selo "🔊 falando..." na tela enquanto lê', cfgAtual.tts.mostrarSelo !== false)}</div>
         <div style="font-size:13px;font-weight:600;margin-bottom:6px;">O que ler em voz alta</div>
-        <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;">Use <code>{nickname}</code>, <code>{presente}</code>, <code>{mensagem}</code> e <code>{valor}</code> conforme o evento.</p>
+        <p style="font-size:11px;color:var(--text-dim);margin:0 0 10px;">Use <code>{nickname}</code>, <code>{presente}</code>, <code>{mensagem}</code> e <code>{valor}</code> conforme o evento. O cooldown evita ler o mesmo tipo de evento rápido demais em sequência (0 = sem cooldown).</p>
         <div id="listaEventosTts">
           ${Object.keys(NOMES_EVENTO_TTS).map(chave => {
-            const ev = cfgAtual.tts.eventos[chave] || { ativo: false, template: "" };
+            const ev = cfgAtual.tts.eventos[chave] || { ativo: false, template: "", cooldownSegundos: 0 };
             return `
             <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
               <label class="toggle" style="flex-shrink:0;"><input type="checkbox" data-tts-evento-ativo="${chave}" ${ev.ativo ? "checked" : ""}/><span class="trilha"></span></label>
-              <div style="width:120px;flex-shrink:0;font-size:12px;color:var(--text-dim);">${NOMES_EVENTO_TTS[chave]}</div>
+              <div style="width:110px;flex-shrink:0;font-size:12px;color:var(--text-dim);">${NOMES_EVENTO_TTS[chave]}</div>
               <input data-tts-evento-template="${chave}" type="text" value="${ev.template || ""}" style="flex:1;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 10px;font-size:12.5px;"/>
+              <input data-tts-evento-cooldown="${chave}" type="number" min="0" value="${ev.cooldownSegundos || 0}" title="Cooldown (segundos)" style="width:56px;flex-shrink:0;box-sizing:border-box;background:var(--bg-alt);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:8px 6px;font-size:12.5px;text-align:center;"/>
             </div>`;
           }).join("")}
         </div>
@@ -3013,26 +3219,10 @@ function renderPainel() {
       `;
     }
     if (overlayId === "spinner") {
-      const modoAtual = cfgAtual.spinner.modoGatilho || "qualquer";
       return `
-        <div style="margin-bottom:14px;">${toggleHtml("spinnerAtivo", "Ativar roleta de presente", cfgAtual.spinner.ativo)}</div>
-        <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;">Quando o gatilho abaixo acontecer, a roleta gira e sorteia uma das fatias — cada fatia é uma Ação já criada na aba Eventos, com um peso que é a chance dela sair.</p>
-        <input type="hidden" id="spinnerModoAtual" value="${modoAtual}"/>
-        <div style="font-family:var(--font-mono);font-size:11px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:8px;">Gira quando chegar</div>
-        <div style="display:flex;gap:8px;margin-bottom:12px;">
-          <button type="button" data-spinner-modo="qualquer" style="background:${modoAtual === "qualquer" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "qualquer" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "qualquer" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Qualquer presente</button>
-          <button type="button" data-spinner-modo="especifico" style="background:${modoAtual === "especifico" ? "var(--accent)" : "var(--bg-alt)"};color:${modoAtual === "especifico" ? "#fff" : "var(--text)"};border:1px solid ${modoAtual === "especifico" ? "var(--accent)" : "var(--border)"};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;">Presente específico</button>
-        </div>
-        <div id="spinnerModoQualquer" style="${modoAtual === "qualquer" ? "" : "display:none;"}margin-bottom:16px;">
-          ${campoNumero("spinnerValorMinimo", "Mínimo de diamantes pra girar", cfgAtual.spinner.valorMinimo)}
-        </div>
-        <div id="spinnerModoEspecifico" style="${modoAtual === "especifico" ? "" : "display:none;"}margin-bottom:16px;">
-          ${campoTexto("spinnerNomePresente", "Nome exato do presente (ex: Rose)", cfgAtual.spinner.nomePresenteEspecifico)}
-        </div>
-        <div style="margin-bottom:16px;">${campoNumero("spinnerDuracao", "Duração do giro (segundos)", Math.round((cfgAtual.spinner.duracaoGiroMs || 4000) / 1000))}</div>
-        <div style="font-size:13px;font-weight:600;margin-bottom:4px;">Fatias da roleta</div>
-        <div id="listaFatiasSpinner"></div>
-        <button id="addFatiaSpinner" style="margin-top:2px;background:transparent;color:var(--text-dim);border:1px dashed var(--border);border-radius:6px;padding:7px 14px;font-size:12px;cursor:pointer;">+ adicionar fatia</button>
+        <p style="font-size:11.5px;color:var(--text-dim);margin:0 0 14px;">Cada grupo abaixo é uma roleta independente, com seu próprio link de overlay — dá pra rodar mais de uma ao mesmo tempo (ex: uma pra qualquer presente, outra só pra um presente específico). Quando o gatilho de um grupo acontecer, a roleta dele gira e sorteia uma das fatias — cada fatia é uma Ação já criada na aba Eventos.</p>
+        <div id="spinnerGruposContainer"></div>
+        <button id="addGrupoSpinner" style="margin-top:2px;width:100%;background:transparent;color:var(--text-dim);border:1.5px dashed var(--border);border-radius:8px;padding:10px;font-size:12.5px;cursor:pointer;">+ adicionar grupo (nova roleta)</button>
       `;
     }
     return "";
@@ -3103,7 +3293,8 @@ function renderPainel() {
       document.querySelectorAll("#listaEventosTts [data-tts-evento-ativo]").forEach(cb => {
         const chave = cb.dataset.ttsEventoAtivo;
         const templateInput = document.querySelector(`[data-tts-evento-template="${chave}"]`);
-        eventosNovo[chave] = { ativo: cb.checked, template: templateInput ? templateInput.value : "" };
+        const cooldownInput = document.querySelector(`[data-tts-evento-cooldown="${chave}"]`);
+        eventosNovo[chave] = { ativo: cb.checked, template: templateInput ? templateInput.value : "", cooldownSegundos: cooldownInput ? (Number(cooldownInput.value) || 0) : 0 };
       });
       novo.tts = {
         ativo: document.getElementById("ttsAtivo").checked,
@@ -3113,17 +3304,20 @@ function renderPainel() {
         vozURI: document.getElementById("ttsVoz").value,
         ignorarComandos: document.getElementById("ttsIgnorarComandos").checked,
         tamanhoMaximo: Number(document.getElementById("ttsTamanhoMaximo").value) || 200,
+        mostrarSelo: document.getElementById("ttsMostrarSelo").checked,
         eventos: eventosNovo,
       };
     } else if (overlayId === "spinner") {
-      novo.spinner = {
-        ativo: document.getElementById("spinnerAtivo").checked,
-        modoGatilho: document.getElementById("spinnerModoAtual").value,
-        nomePresenteEspecifico: document.getElementById("spinnerNomePresente").value,
-        valorMinimo: Number(document.getElementById("spinnerValorMinimo").value) || 0,
-        duracaoGiroMs: (Number(document.getElementById("spinnerDuracao").value) || 4) * 1000,
-        fatias: fatiasSpinnerEditando.filter(f => f.acaoId),
-      };
+      novo.spinners = spinnersEditando.map((g, gi) => ({
+        id: g.id,
+        nome: g.nome || ("Roleta " + (gi + 1)),
+        ativo: g.ativo,
+        modoGatilho: document.getElementById("spinnerModoAtual_" + gi) ? document.getElementById("spinnerModoAtual_" + gi).value : g.modoGatilho,
+        nomePresenteEspecifico: document.getElementById("spinnerNomePresente_" + gi) ? document.getElementById("spinnerNomePresente_" + gi).value : g.nomePresenteEspecifico,
+        valorMinimo: document.getElementById("spinnerValorMinimo_" + gi) ? (Number(document.getElementById("spinnerValorMinimo_" + gi).value) || 0) : g.valorMinimo,
+        duracaoGiroMs: document.getElementById("spinnerDuracao_" + gi) ? (Number(document.getElementById("spinnerDuracao_" + gi).value) || 4) * 1000 : g.duracaoGiroMs,
+        fatias: g.fatias.filter(f => f.acaoId),
+      }));
     }
     return novo;
   }
@@ -3194,27 +3388,16 @@ function renderPainel() {
     if (overlayId === "alerta") wireSomRow(backdrop, "presente", "somVolumeModal");
     if (overlayId === "combo") wireSomRow(backdrop, "combo", "somVolumeModal");
     if (overlayId === "spinner") {
-      fatiasSpinnerEditando = structuredClone(cfgAtual.spinner.fatias || []);
-      montarEditorFatiasSpinner(cfgAtual.automacoes.acoes || []);
-    }
-    if (overlayId === "spinner") {
-      backdrop.querySelectorAll("[data-spinner-modo]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const modo = btn.dataset.spinnerModo;
-          const campoModo = document.getElementById("spinnerModoAtual");
-          if (campoModo) campoModo.value = modo;
-          backdrop.querySelectorAll("[data-spinner-modo]").forEach(b => {
-            const ativo = b.dataset.spinnerModo === modo;
-            b.style.background = ativo ? "var(--accent)" : "var(--bg-alt)";
-            b.style.color = ativo ? "#fff" : "var(--text)";
-            b.style.borderColor = ativo ? "var(--accent)" : "var(--border)";
-          });
-          const elQualquer = document.getElementById("spinnerModoQualquer");
-          const elEspecifico = document.getElementById("spinnerModoEspecifico");
-          if (elQualquer) elQualquer.style.display = modo === "qualquer" ? "" : "none";
-          if (elEspecifico) elEspecifico.style.display = modo === "especifico" ? "" : "none";
+      spinnersEditando = structuredClone(cfgAtual.spinners && cfgAtual.spinners.length ? cfgAtual.spinners : [{ id: "grupo-padrao", nome: "Roleta 1", ativo: false, modoGatilho: "qualquer", nomePresenteEspecifico: "", valorMinimo: 100, duracaoGiroMs: 4000, fatias: [] }]);
+      const acoesDisponiveis = cfgAtual.automacoes.acoes || [];
+      renderSpinnerGrupos(acoesDisponiveis);
+      const btnAddGrupo = document.getElementById("addGrupoSpinner");
+      if (btnAddGrupo) {
+        btnAddGrupo.addEventListener("click", () => {
+          spinnersEditando.push({ id: "grupo" + Date.now(), nome: "Roleta " + (spinnersEditando.length + 1), ativo: false, modoGatilho: "qualquer", nomePresenteEspecifico: "", valorMinimo: 100, duracaoGiroMs: 4000, fatias: [] });
+          renderSpinnerGrupos(acoesDisponiveis);
         });
-      });
+      }
     }
     if (overlayId === "tts") {
       const btnTestarVoz = document.getElementById("ttsTestarVoz");

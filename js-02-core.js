@@ -130,10 +130,18 @@ const CONFIG_PADRAO = {
     // Sistema de Fila (Fase 4): como o overlay de Eventos se comporta
     // quando vários eventos chegam rápido demais pra mostrar um por vez.
     filaConfig: { maximoItens: 20, agruparIguais: false, ignorarDuplicados: false },
+    // Presets (estilo StreamToEarn): cada regra pertence a um preset, e só
+    // as regras do preset ATIVO disparam de verdade — assim dá pra montar
+    // vários "perfis" de automação (ex: um pra chat calmo, outro pra hype)
+    // e trocar em tempo real sem apagar nada. Ações continuam compartilhadas
+    // entre presets (só as regras que ligam gatilho→ação são separadas).
+    presets: [{ id: "preset-padrao", nome: "Preset 1" }],
+    presetAtivoId: "preset-padrao",
   },
   // Texto-pra-voz: lê eventos em voz alta com a voz sintética do
   // navegador (Web Speech API) — sem serviço externo, sem chave. Cada
-  // tipo de evento liga/desliga e tem seu próprio modelo de frase.
+  // tipo de evento liga/desliga e tem seu próprio modelo de frase, com
+  // um cooldown pra não ficar falando o mesmo tipo repetidas vezes.
   tts: {
     ativo: false,
     volume: 80,
@@ -142,26 +150,36 @@ const CONFIG_PADRAO = {
     vozURI: "",
     ignorarComandos: true,
     tamanhoMaximo: 200,
+    // selo "🔊 falando..." no canto do overlay enquanto lê algo em voz alta
+    mostrarSelo: true,
     eventos: {
-      mensagem: { ativo: true, template: "{nickname} disse: {mensagem}" },
-      presente: { ativo: true, template: "{nickname} mandou {presente}!" },
-      seguidor: { ativo: false, template: "{nickname} começou a seguir!" },
-      like: { ativo: false, template: "{nickname} curtiu a live" },
-      compartilhamento: { ativo: false, template: "{nickname} compartilhou a live!" },
+      mensagem: { ativo: true, template: "{nickname} disse: {mensagem}", cooldownSegundos: 0 },
+      presente: { ativo: true, template: "{nickname} mandou {presente}!", cooldownSegundos: 0 },
+      seguidor: { ativo: false, template: "{nickname} começou a seguir!", cooldownSegundos: 0 },
+      like: { ativo: false, template: "{nickname} curtiu a live", cooldownSegundos: 5 },
+      compartilhamento: { ativo: false, template: "{nickname} compartilhou a live!", cooldownSegundos: 0 },
     },
   },
   // Roleta de presente (Gift Spinner): quando o gatilho configurado
   // acontece, a roda gira e sorteia uma "fatia" (uma Ação já criada em
-  // Eventos, com peso = chance de sair). "qualquer" olha o valor em
-  // diamantes; "especifico" olha o nome exato do presente.
-  spinner: {
-    ativo: false,
-    modoGatilho: "qualquer",
-    nomePresenteEspecifico: "",
-    valorMinimo: 100,
-    duracaoGiroMs: 4000,
-    fatias: [],
-  },
+  // Eventos, com peso = chance de sair, e uma raridade opcional só pra
+  // destacar visualmente). "qualquer" olha o valor em diamantes;
+  // "especifico" olha o nome exato do presente.
+  // Múltiplos grupos (estilo StreamToEarn "multi-spinner"): cada grupo é
+  // uma roleta independente, com seu próprio link de overlay
+  // (?view=spinner&grupo=<id>) — dá pra rodar mais de uma ao mesmo tempo.
+  spinners: [
+    {
+      id: "grupo-padrao",
+      nome: "Roleta 1",
+      ativo: false,
+      modoGatilho: "qualquer",
+      nomePresenteEspecifico: "",
+      valorMinimo: 100,
+      duracaoGiroMs: 4000,
+      fatias: [],
+    },
+  ],
 };
 
 // Identidade fixa do criador — aparece na barra superior (Doar/Meus links).
@@ -419,15 +437,37 @@ function carregarConfig() {
       eventos: (salvo.automacoes && salvo.automacoes.eventos) || [],
       variaveis: (salvo.automacoes && salvo.automacoes.variaveis) || [],
       filaConfig: Object.assign(structuredClone(CONFIG_PADRAO.automacoes.filaConfig), (salvo.automacoes && salvo.automacoes.filaConfig) || {}),
+      presets: (salvo.automacoes && salvo.automacoes.presets && salvo.automacoes.presets.length) ? salvo.automacoes.presets : structuredClone(CONFIG_PADRAO.automacoes.presets),
+      presetAtivoId: (salvo.automacoes && salvo.automacoes.presetAtivoId) || CONFIG_PADRAO.automacoes.presetAtivoId,
     };
-    // tts/spinner são objetos aninhados (eventos/fatias) — merge raso
+    // regra salva antes dos presets existirem não tem presetId — cai
+    // sozinha no primeiro preset disponível, sem sumir nem precisar de
+    // ação manual da pessoa.
+    {
+      const primeiroPresetId = cfg.automacoes.presets[0] ? cfg.automacoes.presets[0].id : "preset-padrao";
+      cfg.automacoes.eventos.forEach(r => { if (!r.presetId) r.presetId = primeiroPresetId; });
+    }
+    // tts/spinners são objetos aninhados (eventos/fatias) — merge raso
     // igual os outros perderia campo novo que não existia quando a
     // pessoa salvou a config pela última vez, então mescla um nível
     // mais fundo também.
     cfg.tts = Object.assign(structuredClone(CONFIG_PADRAO.tts), salvo.tts || {});
-    cfg.tts.eventos = Object.assign(structuredClone(CONFIG_PADRAO.tts.eventos), (salvo.tts && salvo.tts.eventos) || {});
-    cfg.spinner = Object.assign(structuredClone(CONFIG_PADRAO.spinner), salvo.spinner || {});
-    cfg.spinner.fatias = (salvo.spinner && salvo.spinner.fatias) || CONFIG_PADRAO.spinner.fatias;
+    cfg.tts.eventos = {};
+    Object.keys(CONFIG_PADRAO.tts.eventos).forEach(tipo => {
+      cfg.tts.eventos[tipo] = Object.assign(structuredClone(CONFIG_PADRAO.tts.eventos[tipo]), (salvo.tts && salvo.tts.eventos && salvo.tts.eventos[tipo]) || {});
+    });
+    // spinner (singular, formato antigo) vira o primeiro grupo de
+    // spinners[] na primeira vez que uma config antiga é carregada —
+    // ninguém perde a roleta que já tinha configurado.
+    const gruposSalvos = (salvo.spinners && salvo.spinners.length) ? salvo.spinners : (salvo.spinner ? [Object.assign({ id: "grupo-padrao", nome: "Roleta 1" }, salvo.spinner)] : null);
+    cfg.spinners = (gruposSalvos || structuredClone(CONFIG_PADRAO.spinners)).map((g, i) => {
+      const padraoGrupo = CONFIG_PADRAO.spinners[0];
+      const grupo = Object.assign(structuredClone(padraoGrupo), g);
+      grupo.id = g.id || ("grupo" + Date.now() + i);
+      grupo.fatias = g.fatias || [];
+      return grupo;
+    });
+    delete cfg.spinner;
     return cfg;
   } catch (e) {
     return structuredClone(CONFIG_PADRAO);
@@ -536,6 +576,12 @@ function raridadeDoTier(index, total) {
   if (posicao >= 0.5) return RARIDADES_TIER[2];
   if (posicao >= 0.25) return RARIDADES_TIER[1];
   return RARIDADES_TIER[0];
+}
+// acha uma raridade pelo nome (usado pela Roleta de presente, onde a
+// pessoa escolhe a raridade de cada fatia manualmente em vez de calcular
+// por posição) — devolve null se não achar ou se "nome" for vazio.
+function raridadePorNome(nome) {
+  return RARIDADES_TIER.find(r => r.nome === nome) || null;
 }
 // gradiente diagonal escuro -> cor da raridade, pro visual "item shop"
 function gradienteRaridade(corHex) {

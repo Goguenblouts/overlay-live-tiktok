@@ -21,6 +21,7 @@
     --font-mono: 'IBM Plex Mono', monospace;
   }
   * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; padding: 0; overflow: hidden; }
   body { background: var(--bg); }
   ::selection { background: var(--accent); color: #ffffff; }
   ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -130,8 +131,8 @@
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
     padding: 24px; max-width: 380px; width: calc(100% - 40px);
   }
-  .app-shell { display: flex; flex-direction: column; min-height: 100vh; }
-  .painel-layout { display: flex; flex: 1; min-height: 0; justify-content: center; }
+  .app-shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+  .painel-layout { display: flex; flex: 1; min-height: 0; }
   .painel-sidebar {
     width: 84px;
     flex-shrink: 0;
@@ -143,7 +144,7 @@
     align-items: center;
     gap: 4px;
   }
-  .painel-main { flex: 1; min-width: 0; padding: 44px 48px 88px; max-width: 1180px; }
+  .painel-main { flex: 1; min-width: 0; padding: 44px 48px 88px; max-width: 1600px; overflow-y: auto; height: 100%; }
   .nav-item {
     display: flex;
     flex-direction: column;

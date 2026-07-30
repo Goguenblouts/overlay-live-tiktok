@@ -57,9 +57,10 @@ A chave é **gratuita** (plano "Community", sem cartão de crédito):
 
 1. Crie uma conta em [eulerstream.com/register](https://www.eulerstream.com/register).
 2. No painel deles, copie sua API key.
-3. Cole ela no campo **"Chave de API (Euler Stream)"**, na janela
-   "Conexão com a live" deste app (ao lado do campo do `@`). Fica
-   salva localmente pras próximas vezes.
+3. Cole ela no campo **"Chave de API (Euler Stream)"**, dentro do
+   popover de "Conexão com a live" deste app (clique no ícone de
+   antena no canto inferior esquerdo da barra lateral, ao lado do
+   campo do `@`). Fica salva localmente pras próximas vezes.
 
 ## Como rodar
 
@@ -69,11 +70,12 @@ npm install
 npm start
 ```
 
-Duas janelas abrem:
-- **Central de Overlays** — o painel de sempre (`index.html`), pra
-  configurar overlays, copiar links pro OBS/TikTok Studio, etc.
-- **Conexão com a live** — janela pequena pra digitar o `@` do perfil
-  que está ao vivo e clicar em Conectar.
+Abre uma única janela — a **Central de Overlays** de sempre
+(`index.html`). O botão de **Conexão com a live** fica no ícone de
+antena no canto inferior esquerdo da barra lateral: clique nele pra
+abrir o popover, digitar o `@` do perfil e conectar. O ícone muda de
+cor sozinho conforme o status (cinza = desconectado, amarelo
+piscando = aguardando a live começar, verde = ao vivo).
 
 Depois de conectar, os overlays (Browser Source no OBS/TikTok Studio)
 continuam funcionando exatamente como antes — eles só recebem os

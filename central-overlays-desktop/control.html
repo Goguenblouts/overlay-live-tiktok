@@ -47,6 +47,9 @@
   <label for="campoUsername">@ do perfil</label>
   <input id="campoUsername" type="text" placeholder="seu.usuario" autocomplete="off"/>
 
+  <label for="campoApiKey">Chave de API (Euler Stream)</label>
+  <input id="campoApiKey" type="text" placeholder="cole aqui sua chave grátis" autocomplete="off"/>
+
   <button id="btnConectar">Conectar</button>
   <button id="btnDesconectar" disabled>Desconectar</button>
 
@@ -55,11 +58,17 @@
   <p id="dica">
     O painel da Central de Overlays abre junto, numa outra janela.<br/>
     Os overlays (Browser Source no OBS/TikTok Studio) continuam usando
-    <code>ws://127.0.0.1:21213/</code> — já é o valor padrão, não precisa mexer em nada lá.
+    <code>ws://127.0.0.1:21213/</code> — já é o valor padrão, não precisa mexer em nada lá.<br/><br/>
+    <strong>Sobre a chave de API:</strong> o TikTok exige que o serviço que assina a
+    conexão (Euler Stream) tenha uma chave — sem ela, pode aparecer o erro
+    "requires a Business plan". A chave é de graça: crie uma conta em
+    <code>eulerstream.com/register</code> (plano Community, sem cartão), copie a
+    chave do painel deles e cole aqui. Fica salva pra próxima vez.
   </p>
 
   <script>
     const campoUsername = document.getElementById("campoUsername");
+    const campoApiKey = document.getElementById("campoApiKey");
     const btnConectar = document.getElementById("btnConectar");
     const btnDesconectar = document.getElementById("btnDesconectar");
     const statusEl = document.getElementById("status");
@@ -75,17 +84,21 @@
 
     window.central.lerConfig().then((cfg) => {
       if (cfg && cfg.username) campoUsername.value = cfg.username;
+      if (cfg && cfg.signApiKey) campoApiKey.value = cfg.signApiKey;
     });
     window.central.lerStatus().then(aplicarStatus);
     window.central.aoAtualizarStatus(aplicarStatus);
 
     btnConectar.addEventListener("click", () => {
-      window.central.conectar(campoUsername.value);
+      window.central.conectar({ username: campoUsername.value, signApiKey: campoApiKey.value });
     });
     btnDesconectar.addEventListener("click", () => {
       window.central.desconectar();
     });
     campoUsername.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") btnConectar.click();
+    });
+    campoApiKey.addEventListener("keydown", (e) => {
       if (e.key === "Enter") btnConectar.click();
     });
   </script>

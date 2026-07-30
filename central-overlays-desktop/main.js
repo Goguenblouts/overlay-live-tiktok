@@ -48,6 +48,12 @@ let janelaConexao = null;
 let servidorWs = null;
 let conexaoTikTok = null;
 let statusAtual = { status: "desconectado", mensagem: "Ainda não conectado." };
+// Enquanto "aguardando", o app fica tentando conectar sozinho de tempos
+// em tempos até a live realmente começar — assim não precisa ficar de
+// olho esperando a hora certa de clicar em Conectar.
+let intervaloAutoConectar = null;
+let autoConectarAtivo = false;
+const INTERVALO_AUTO_CONECTAR_MS = 30 * 1000;
 
 /* ------------------------------------------------------------
    Config local (só guarda o último @ usado, pra já vir preenchido
@@ -117,15 +123,16 @@ function dadosBasicosDoEvento(data) {
   };
 }
 
-async function conectarNoTikTok(usernameBruto, signApiKeyBruto) {
+async function conectarNoTikTok(usernameBruto, signApiKeyBruto, opcoes) {
+  const modoAutomatico = !!(opcoes && opcoes.automatico);
   const username = String(usernameBruto || "").trim().replace(/^@/, "");
   const signApiKey = String(signApiKeyBruto || "").trim();
   if (!username) {
     atualizarStatus("erro", "Digite o @ do perfil que está ao vivo.");
-    return;
+    return false;
   }
 
-  await desconectarDoTikTok();
+  await desconectarDoTikTok({ manterEspera: true });
   atualizarStatus("conectando", `Conectando na live de @${username}...`);
 
   let WebcastPushConnection;
@@ -143,7 +150,8 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto) {
   } catch (erro) {
     console.error("[tiktok-live] falha ao carregar a biblioteca:", erro);
     atualizarStatus("erro", "Não consegui carregar o tiktok-live-connector — rode 'npm install' na pasta do app.");
-    return;
+    pararAutoConectar();
+    return false;
   }
 
   // A partir de certa versão, a lib passou a exigir uma "chave de API"
@@ -212,36 +220,90 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto) {
     }
   });
 
+  // Quando a live termina (ou a conexão cai), volta sozinho pro modo
+  // de espera — assim já fica pronto pra próxima live, sem precisar
+  // clicar em Conectar de novo toda vez.
   conexaoTikTok.on("streamEnd", () => {
+    conexaoTikTok = null;
     atualizarStatus("desconectado", "A live acabou.");
+    iniciarAutoConectar(username, signApiKey).catch(() => {});
   });
   conexaoTikTok.on("disconnected", () => {
+    conexaoTikTok = null;
     atualizarStatus("desconectado", "A conexão com o TikTok caiu.");
+    iniciarAutoConectar(username, signApiKey).catch(() => {});
   });
 
   try {
     const estado = await conexaoTikTok.connect();
+    pararAutoConectar();
     atualizarStatus("conectado", `Conectado na live de @${username} (sala ${estado.roomId}).`);
     salvarConfigLocal({ username, signApiKey });
+    return true;
   } catch (erro) {
     console.error("[tiktok-live] falha ao conectar:", erro);
     const mensagemErro = String(erro && erro.message || erro || "");
+    conexaoTikTok = null;
+
     if (/business plan/i.test(mensagemErro)) {
+      // Isso não se resolve tentando de novo sozinho — precisa da chave.
+      pararAutoConectar();
       atualizarStatus(
         "erro",
         "O TikTok exige uma chave de API (Euler Stream) pra liberar a conexão agora — crie uma de graça em eulerstream.com/register (plano Community, sem cartão) e cole ela no campo \"Chave de API\" aqui em cima, depois clique em Conectar de novo."
       );
+      return false;
+    }
+
+    if (modoAutomatico) {
+      // Provavelmente só significa "ainda não está ao vivo" — continua
+      // esperando em silêncio, sem virar uma mensagem de erro.
+      atualizarStatus("aguardando", `Aguardando @${username} entrar ao vivo — conecto sozinho assim que a live começar...`);
     } else {
       atualizarStatus("erro", `Não consegui conectar em @${username} — confira se a live está ao vivo agora. (${mensagemErro})`);
     }
-    conexaoTikTok = null;
+    return false;
   }
 }
 
-async function desconectarDoTikTok() {
+/* ------------------------------------------------------------
+   Auto-conectar: em vez de exigir que a live já esteja no ar no
+   exato momento em que você clica em "Conectar", o app fica
+   tentando sozinho em segundo plano (a cada 30s) até a live
+   realmente começar — sem precisar voltar aqui e clicar de novo.
+   ------------------------------------------------------------ */
+function pararAutoConectar() {
+  autoConectarAtivo = false;
+  if (intervaloAutoConectar) {
+    clearInterval(intervaloAutoConectar);
+    intervaloAutoConectar = null;
+  }
+}
+
+async function iniciarAutoConectar(username, signApiKey) {
+  pararAutoConectar();
+  autoConectarAtivo = true;
+  const tentar = async () => {
+    if (!autoConectarAtivo) return;
+    await conectarNoTikTok(username, signApiKey, { automatico: true });
+  };
+  await tentar();
+  if (autoConectarAtivo) {
+    intervaloAutoConectar = setInterval(tentar, INTERVALO_AUTO_CONECTAR_MS);
+  }
+}
+
+async function desconectarDoTikTok(opcoes) {
+  if (!(opcoes && opcoes.manterEspera)) {
+    pararAutoConectar();
+  }
   if (conexaoTikTok) {
     try { conexaoTikTok.disconnect(); } catch (e) {}
     conexaoTikTok = null;
+    if (!(opcoes && opcoes.manterEspera)) {
+      atualizarStatus("desconectado", "Desconectado.");
+    }
+  } else if (!(opcoes && opcoes.manterEspera)) {
     atualizarStatus("desconectado", "Desconectado.");
   }
 }
@@ -329,7 +391,7 @@ function criarJanelaConexao() {
 /* ------------------------------------------------------------
    Ponte com a janela "Conexão com a live" (control.html)
    ------------------------------------------------------------ */
-ipcMain.handle("conectar-tiktok", (evento, dados) => conectarNoTikTok(dados && dados.username, dados && dados.signApiKey));
+ipcMain.handle("conectar-tiktok", (evento, dados) => iniciarAutoConectar(dados && dados.username, dados && dados.signApiKey));
 ipcMain.handle("desconectar-tiktok", () => desconectarDoTikTok());
 ipcMain.handle("ler-config", () => lerConfigLocal());
 ipcMain.handle("ler-status", () => statusAtual);

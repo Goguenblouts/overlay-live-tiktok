@@ -1,22 +1,27 @@
   :root {
-    --bg: #0e0e10;
-    --bg-alt: #16161a;
-    --surface: #1a1a1e;
-    --surface-hover: #212126;
-    --border: #2a2a30;
-    --accent: #F0464B;
-    --accent-dim: #8a2c30;
-    --text: #f3f4f2;
-    --text-dim: #93939a;
-    --text-faint: #56565e;
-    --grad-start: #D61F93;
-    --grad-end: #7C22C8;
-    --ic-links: #F0464B;
-    --ic-previa: #2F9BD6;
-    --ic-aparencia: #9B5DE5;
-    --ic-config: #28C48A;
-    --ic-eventos: #F0A63C;
-    --ic-simulador: #2FD68A;
+    /* ---- paleta "StreamToEarn": navy profundo + roxo primário + laranja
+       de destaque (CTA), estilo mais simples e objetivo que o antigo
+       tema vermelho/rosa ---- */
+    --bg: #0a0e27;
+    --bg-alt: #10163a;
+    --surface: #141b42;
+    --surface-hover: #1b2452;
+    --border: #262c52;
+    --accent: #7C3AED;
+    --accent-dim: #3b2172;
+    --cta-start: #F5A623;
+    --cta-end: #FF7A45;
+    --text: #f5f6fa;
+    --text-dim: #9ca3c4;
+    --text-faint: #5b6390;
+    --grad-start: #1E1B4B;
+    --grad-end: #7C3AED;
+    --ic-links: #8B5CF6;
+    --ic-previa: #38BDF8;
+    --ic-aparencia: #EC4899;
+    --ic-config: #34D399;
+    --ic-eventos: #F5A623;
+    --ic-simulador: #22D3EE;
     --font-display: 'Space Grotesk', sans-serif;
     --font-mono: 'IBM Plex Mono', monospace;
   }
@@ -39,7 +44,7 @@
     font-family: var(--font-mono);
   }
   .painel-card {
-    background: rgba(26, 26, 30, 0.72);
+    background: rgba(20, 27, 66, 0.72);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border: 1px solid var(--border);
@@ -49,7 +54,7 @@
   }
   .painel-card:hover { border-color: var(--text-faint); }
   .card-clicavel { cursor: pointer; transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease; }
-  .card-clicavel:hover { border-color: var(--ic-eventos); transform: translateY(-2px); background: rgba(38,38,44,0.85); }
+  .card-clicavel:hover { border-color: var(--ic-eventos); transform: translateY(-2px); background: rgba(27,36,82,0.85); }
   .plataforma-pill {
     display: inline-flex; align-items: center; gap: 7px;
     background: var(--bg-alt); border: 1px solid var(--border); border-radius: 999px;
@@ -60,13 +65,6 @@
     position: relative;
     overflow: hidden;
     border-width: 1.5px !important;
-  }
-  .card-raridade::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: repeating-linear-gradient(135deg, transparent, transparent 10px, rgba(255,255,255,0.025) 10px, rgba(255,255,255,0.025) 20px);
-    pointer-events: none;
   }
   .signal-bar {
     height: 2px;
@@ -110,8 +108,8 @@
     text-decoration: none; white-space: nowrap;
   }
   .topbar-btn:hover { background: rgba(255,255,255,0.22); transform: none; }
-  .topbar-btn-doar { background: rgba(255,255,255,0.94); color: #c0295a !important; }
-  .topbar-btn-doar:hover { background: #fff; }
+  .topbar-btn-doar { background: linear-gradient(90deg, var(--cta-start), var(--cta-end)); color: #fff !important; border-color: transparent; }
+  .topbar-btn-doar:hover { filter: brightness(1.08); }
   .topbar-dropdown {
     position: absolute; top: 46px; right: 0; min-width: 220px; max-width: 280px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
@@ -181,10 +179,10 @@
     position: relative;
     margin-top: auto;
     width: 38px; height: 38px; border-radius: 50%;
-    background: rgba(240,70,75,0.12);
-    border: 1px solid rgba(240,70,75,0.28);
+    background: rgba(124,58,237,0.14);
+    border: 1px solid rgba(124,58,237,0.32);
     display: flex; align-items: center; justify-content: center;
-    color: var(--acc2, #f0464b);
+    color: var(--acc2, #7C3AED);
     font-size: 14px;
     cursor: default;
   }
@@ -214,11 +212,11 @@
     .conexao-live-popover { left: auto; right: 0; bottom: auto; top: 100%; margin-top: 8px; }
   }
   .btn-cta {
-    background: linear-gradient(90deg, var(--grad-start), var(--grad-end));
+    background: linear-gradient(90deg, var(--cta-start), var(--cta-end));
     color: #fff !important;
     border: none !important;
     font-weight: 700;
-    box-shadow: 0 6px 18px rgba(124,34,200,0.28);
+    box-shadow: 0 6px 18px rgba(245,166,35,0.28);
   }
   .btn-cta:hover { filter: brightness(1.08); }
   .oculto { display: none !important; }

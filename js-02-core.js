@@ -27,6 +27,7 @@ const OVERLAYS = [
 ];
 
 const PRESETS_TEMA = {
+  "Navy StreamToEarn": { corPrimaria: "#7C3AED", corFundo: "#0a0e27", corCard: "#141b42", corBorda: "#262c52", corTexto: "#ffffff", corTextoSec: "#9ca3c4", raio: 14, fonte: "padrao" },
   "Verde neon":       { corPrimaria: "#1D9E75", corFundo: "#0d1512", corCard: "#152420", corBorda: "#1f3a32", corTexto: "#ffffff", corTextoSec: "#8fb3a8", raio: 12, fonte: "padrao" },
   "Roxo gamer":        { corPrimaria: "#7F77DD", corFundo: "#120f1f", corCard: "#1c1830", corBorda: "#332c52", corTexto: "#ffffff", corTextoSec: "#b3aee0", raio: 14, fonte: "montserrat" },
   "Rosa vibrante":     { corPrimaria: "#D4537E", corFundo: "#1a0f14", corCard: "#2a1620", corBorda: "#4a2534", corTexto: "#ffffff", corTextoSec: "#e0a8bc", raio: 16, fonte: "poppins" },
@@ -82,14 +83,18 @@ const CONFIG_PADRAO = {
     { id: "medio2", nome: "Battle pass",       pontos: 1375, fontes: ["presente"] },
     { id: "epico",  nome: "Bundle de skin",    pontos: 3410, fontes: ["presente"] },
   ],
+  // tema padrão: navy + roxo + laranja, no estilo StreamToEarn — mais
+  // simples e objetivo que o antigo verde. Pode ser trocado a qualquer
+  // hora em Aparência (inclusive pelos outros presets, que continuam
+  // disponíveis).
   tema: {
-    corPrimaria: "#1D9E75",
-    corFundo: "#15171a",
-    corCard: "#202226",
-    corBorda: "#3a3c40",
+    corPrimaria: "#7C3AED",
+    corFundo: "#0a0e27",
+    corCard: "#141b42",
+    corBorda: "#262c52",
     corTexto: "#ffffff",
-    corTextoSec: "#9a9a95",
-    raio: 12,
+    corTextoSec: "#9ca3c4",
+    raio: 14,
     fonte: "padrao",
     animacaoEstilo: "slide",
   },

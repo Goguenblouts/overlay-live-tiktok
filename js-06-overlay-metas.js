@@ -45,12 +45,12 @@ function dispararConfete(container, cor) {
 function efeitoConfeteTela(cor) {
   if (typeof window.confetti !== "function") return;
   try {
-    window.confetti({ particleCount: 90, spread: 80, startVelocity: 38, origin: { x: 0.5, y: 0.4 }, colors: [cor || "#F0A63C", "#ffffff"], disableForReducedMotion: true });
+    window.confetti({ particleCount: 90, spread: 80, startVelocity: 38, origin: { x: 0.5, y: 0.4 }, colors: [cor || "#F5A623", "#ffffff"], disableForReducedMotion: true });
   } catch (e) {}
 }
 function efeitoFogosTela(cor) {
   if (typeof window.confetti !== "function") return;
-  const cores = [cor || "#F0464B", "#F0C24B", "#22D3EE", "#7F77DD"];
+  const cores = [cor || "#7C3AED", "#F5A623", "#22D3EE", "#EC4899"];
   [0, 300, 600].forEach((atraso, i) => {
     setTimeout(() => {
       try {

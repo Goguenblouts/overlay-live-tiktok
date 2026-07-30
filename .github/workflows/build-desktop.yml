@@ -44,6 +44,21 @@ jobs:
         shell: bash
         run: npm version 1.0.${{ github.run_number }} --no-git-tag-version --allow-same-version
 
+      - name: Criar e enviar a tag da versão
+        # O electron-builder só publica uma Release "de verdade" (com
+        # nome certo, não rascunho "untagged-...") se existir uma tag
+        # git de verdade apontando pro commit atual. Como esse workflow
+        # roda a partir de um push na branch (não de uma tag), criamos
+        # e mandamos a tag aqui antes de gerar o instalador.
+        working-directory: central-overlays-desktop
+        shell: bash
+        run: |
+          VERSAO=$(node -p "require('./package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSAO"
+          git push origin "v$VERSAO"
+
       - name: Gerar o instalador e publicar como Release
         working-directory: central-overlays-desktop
         run: npx electron-builder --publish always

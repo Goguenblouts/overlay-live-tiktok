@@ -28,8 +28,7 @@
     "directories": { "output": "dist" },
     "files": [
       "main.js",
-      "control.html",
-      "control-preload.js",
+      "preload.js",
       "package.json",
       "index.html",
       "styles.css",

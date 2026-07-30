@@ -9,6 +9,12 @@
    Ou seja: o site (index.html) NÃO precisa de nenhuma alteração,
    só aponta pra "ws://127.0.0.1:21213/" (já é o valor padrão dele).
 
+   Requer também uma chave de API grátis do serviço Euler Stream
+   (eulerstream.com/register, plano Community, sem cartão) — é ele
+   que assina o handshake com o TikTok por trás da lib. Sem a chave,
+   a conexão pode falhar com "requires a Business plan". Cole a
+   chave no campo "Chave de API" da janela "Conexão com a live".
+
    Duas janelas abrem ao iniciar o app:
    - Painel (index.html): a Central de Overlays de sempre.
    - Conexão com a live: janela pequena pra digitar o @ do TikTok
@@ -43,9 +49,9 @@ let statusAtual = { status: "desconectado", mensagem: "Ainda não conectado." };
    ------------------------------------------------------------ */
 function lerConfigLocal() {
   try {
-    return JSON.parse(fs.readFileSync(CAMINHO_CONFIG_LOCAL, "utf8"));
+    return Object.assign({ username: "", signApiKey: "" }, JSON.parse(fs.readFileSync(CAMINHO_CONFIG_LOCAL, "utf8")));
   } catch (e) {
-    return { username: "" };
+    return { username: "", signApiKey: "" };
   }
 }
 function salvarConfigLocal(dados) {
@@ -105,8 +111,9 @@ function dadosBasicosDoEvento(data) {
   };
 }
 
-async function conectarNoTikTok(usernameBruto) {
+async function conectarNoTikTok(usernameBruto, signApiKeyBruto) {
   const username = String(usernameBruto || "").trim().replace(/^@/, "");
+  const signApiKey = String(signApiKeyBruto || "").trim();
   if (!username) {
     atualizarStatus("erro", "Digite o @ do perfil que está ao vivo.");
     return;
@@ -133,8 +140,17 @@ async function conectarNoTikTok(usernameBruto) {
     return;
   }
 
+  // A partir de certa versão, a lib passou a exigir uma "chave de API"
+  // do serviço Euler Stream (quem assina o handshake com o TikTok por
+  // trás dos panos) pra liberar a conexão — sem ela, algumas rotas dão
+  // erro "requires a Business plan" mesmo pra uso pessoal/gratuito. A
+  // chave é de graça: crie uma conta em https://www.eulerstream.com/register
+  // (plano "Community", sem cartão) e cole a chave aqui na janela de
+  // Conexão. Sem chave, ainda tentamos conectar (às vezes funciona por
+  // um tempo), mas se der esse erro de "Business plan", é isso.
   conexaoTikTok = new WebcastPushConnection(username, {
     enableExtendedGiftInfo: true,
+    signApiKey: signApiKey || undefined,
   });
 
   conexaoTikTok.on("chat", (data) => {
@@ -200,10 +216,18 @@ async function conectarNoTikTok(usernameBruto) {
   try {
     const estado = await conexaoTikTok.connect();
     atualizarStatus("conectado", `Conectado na live de @${username} (sala ${estado.roomId}).`);
-    salvarConfigLocal({ username });
+    salvarConfigLocal({ username, signApiKey });
   } catch (erro) {
     console.error("[tiktok-live] falha ao conectar:", erro);
-    atualizarStatus("erro", `Não consegui conectar em @${username} — confira se a live está ao vivo agora. (${erro.message || erro})`);
+    const mensagemErro = String(erro && erro.message || erro || "");
+    if (/business plan/i.test(mensagemErro)) {
+      atualizarStatus(
+        "erro",
+        "O TikTok exige uma chave de API (Euler Stream) pra liberar a conexão agora — crie uma de graça em eulerstream.com/register (plano Community, sem cartão) e cole ela no campo \"Chave de API\" aqui em cima, depois clique em Conectar de novo."
+      );
+    } else {
+      atualizarStatus("erro", `Não consegui conectar em @${username} — confira se a live está ao vivo agora. (${mensagemErro})`);
+    }
     conexaoTikTok = null;
   }
 }
@@ -256,7 +280,7 @@ function criarJanelaConexao() {
 /* ------------------------------------------------------------
    Ponte com a janela "Conexão com a live" (control.html)
    ------------------------------------------------------------ */
-ipcMain.handle("conectar-tiktok", (evento, username) => conectarNoTikTok(username));
+ipcMain.handle("conectar-tiktok", (evento, dados) => conectarNoTikTok(dados && dados.username, dados && dados.signApiKey));
 ipcMain.handle("desconectar-tiktok", () => desconectarDoTikTok());
 ipcMain.handle("ler-config", () => lerConfigLocal());
 ipcMain.handle("ler-status", () => statusAtual);

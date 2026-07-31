@@ -168,8 +168,16 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto, opcoes) {
   // (plano "Community", sem cartão) e cole a chave aqui na janela de
   // Conexão. Sem chave, ainda tentamos conectar (às vezes funciona por
   // um tempo), mas se der esse erro de "Business plan", é isso.
+  //
+  // "enableExtendedGiftInfo" FOI REMOVIDO de propósito: essa opção busca
+  // um catálogo extra de presentes (nomes/imagens) numa rota separada da
+  // Euler Stream que parece exigir plano pago — provável causa real do
+  // erro "requires a Business plan" mesmo com chave grátis válida. Nada
+  // aqui no app usa esse catálogo extra: o nome e a contagem de diamantes
+  // de cada presente já vêm direto no próprio evento "gift" (giftDetails/
+  // gift.name, tratados logo abaixo em conexaoTikTok.on("gift", ...)),
+  // então desligar isso não tira nenhuma informação que já mostrávamos.
   conexaoTikTok = new WebcastPushConnection(username, {
-    enableExtendedGiftInfo: true,
     signApiKey: signApiKey || undefined,
   });
 

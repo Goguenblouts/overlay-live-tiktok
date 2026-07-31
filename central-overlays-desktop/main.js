@@ -275,9 +275,10 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto, opcoes) {
         "erro",
         `Sua chave de API está configurada, mas o TikTok/Euler Stream recusou a conexão agora com @${username} (bug conhecido e intermitente da lib — às vezes só acontece nessa live específica). Não precisa pagar nada: costuma se resolver tentando de novo em alguns segundos. Se continuar sempre falhando na mesma live, pode ser bug do lado deles.`
       );
-      if (modoAutomatico) {
-        iniciarAutoConectar(username, signApiKey).catch(() => {});
-      }
+      // Não chama pararAutoConectar() aqui: se já tinha um loop de
+      // auto-conectar rodando em segundo plano, ele continua tentando
+      // sozinho a cada 30s (é a própria ipcMain.handle("conectar-tiktok")
+      // quem liga esse loop depois de uma tentativa manual que falhou).
       return false;
     }
 
@@ -306,14 +307,20 @@ function pararAutoConectar() {
   }
 }
 
-async function iniciarAutoConectar(username, signApiKey) {
+async function iniciarAutoConectar(username, signApiKey, opcoes) {
   pararAutoConectar();
   autoConectarAtivo = true;
   const tentar = async () => {
     if (!autoConectarAtivo) return;
     await conectarNoTikTok(username, signApiKey, { automatico: true });
   };
-  await tentar();
+  // "semTentativaImediata": usado depois de um clique manual que já
+  // acabou de tentar e mostrou o erro real na tela — sem isso, essa
+  // primeira chamada tentaria de novo na hora e sobrescreveria a
+  // mensagem de erro que a pessoa ainda nem teve tempo de ler.
+  if (!(opcoes && opcoes.semTentativaImediata)) {
+    await tentar();
+  }
   if (autoConectarAtivo) {
     intervaloAutoConectar = setInterval(tentar, INTERVALO_AUTO_CONECTAR_MS);
   }
@@ -406,7 +413,24 @@ function criarJanelaPainel() {
    Ponte com o botão "Conexão com a live" dentro do próprio Painel
    (ver preload.js e o popover em js-04-painel.js)
    ------------------------------------------------------------ */
-ipcMain.handle("conectar-tiktok", (evento, dados) => iniciarAutoConectar(dados && dados.username, dados && dados.signApiKey));
+ipcMain.handle("conectar-tiktok", async (evento, dados) => {
+  const username = dados && dados.username;
+  const signApiKey = dados && dados.signApiKey;
+  // Clique manual no botão "Conectar" SEMPRE fazia uma tentativa "muda"
+  // (automatico:true), que existe pra não incomodar ninguém com mensagem
+  // de erro toda vez que o auto-conectar tenta sozinho em segundo plano
+  // e a live simplesmente ainda não começou. Só que isso escondia
+  // QUALQUER erro real também do clique manual — por isso "Conectar"
+  // parecia só ficar em "aguardando" pra sempre, mesmo com a pessoa já
+  // ao vivo e o motivo sendo outro. Agora o clique manual faz UMA
+  // tentativa de verdade primeiro (mostra o erro real que rolar) e só
+  // depois liga o modo automático em segundo plano se não der certo.
+  const sucesso = await conectarNoTikTok(username, signApiKey, { automatico: false });
+  if (!sucesso) {
+    iniciarAutoConectar(username, signApiKey, { semTentativaImediata: true }).catch(() => {});
+  }
+  return sucesso;
+});
 ipcMain.handle("desconectar-tiktok", () => desconectarDoTikTok());
 ipcMain.handle("ler-config", () => lerConfigLocal());
 ipcMain.handle("ler-status", () => statusAtual);

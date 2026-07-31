@@ -130,6 +130,14 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto, opcoes) {
     return false;
   }
 
+  // Salva o @ e a chave de API JÁ AQUI, antes de tentar conectar (não só
+  // quando dá certo lá embaixo) — senão, se a conexão falhar, o campo
+  // "Chave de API" some da tela na próxima vez que a janela de Conexão
+  // for aberta (ou o app reiniciado), porque nunca foi salvo em disco.
+  // Isso fazia parecer que a chave "não funcionava", quando na verdade
+  // ela só nunca tinha sido persistida de verdade.
+  salvarConfigLocal({ username, signApiKey });
+
   await desconectarDoTikTok({ manterEspera: true });
   atualizarStatus("conectando", `Conectando na live de @${username}...`);
 
@@ -244,12 +252,32 @@ async function conectarNoTikTok(usernameBruto, signApiKeyBruto, opcoes) {
     conexaoTikTok = null;
 
     if (/business plan/i.test(mensagemErro)) {
-      // Isso não se resolve tentando de novo sozinho — precisa da chave.
-      pararAutoConectar();
+      if (!signApiKey) {
+        // Sem chave nenhuma — isso não se resolve tentando de novo sozinho.
+        pararAutoConectar();
+        atualizarStatus(
+          "erro",
+          "O TikTok exige uma chave de API (Euler Stream) pra liberar a conexão agora — crie uma de graça em eulerstream.com/register (plano Community, sem cartão) e cole ela no campo \"Chave de API\" aqui em cima, depois clique em Conectar de novo."
+        );
+        return false;
+      }
+      // JÁ TEM uma chave configurada e mesmo assim veio esse erro — não é
+      // falta de chave. É um bug conhecido (e ainda em aberto) do lado do
+      // tiktok-live-connector/Euler Stream: às vezes essa mensagem aparece
+      // mesmo com chave grátis válida, de forma intermitente e só em
+      // algumas lives (ver github.com/zerodytrash/TikTok-Live-Connector,
+      // issue #324 — um dos mantenedores confirmou que chave grátis
+      // deveria bastar, sem precisar pagar). Tentar de novo (inclusive
+      // automaticamente) costuma resolver depois de um tempo, então NÃO
+      // paramos o auto-conectar aqui — só avisamos com uma mensagem que
+      // não manda a pessoa comprar nada à toa.
       atualizarStatus(
         "erro",
-        "O TikTok exige uma chave de API (Euler Stream) pra liberar a conexão agora — crie uma de graça em eulerstream.com/register (plano Community, sem cartão) e cole ela no campo \"Chave de API\" aqui em cima, depois clique em Conectar de novo."
+        `Sua chave de API está configurada, mas o TikTok/Euler Stream recusou a conexão agora com @${username} (bug conhecido e intermitente da lib — às vezes só acontece nessa live específica). Não precisa pagar nada: costuma se resolver tentando de novo em alguns segundos. Se continuar sempre falhando na mesma live, pode ser bug do lado deles.`
       );
+      if (modoAutomatico) {
+        iniciarAutoConectar(username, signApiKey).catch(() => {});
+      }
       return false;
     }
 
